@@ -2,8 +2,15 @@
 
 import { useStore } from '@/lib/store';
 
+function formatDuration(ms: number) {
+  const s = Math.round(ms / 1000);
+  const min = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${min}:${sec.toString().padStart(2, '0')}`;
+}
+
 export default function AssetGallery() {
-  const { images, videos, audios } = useStore();
+  const { images, videos, musics } = useStore();
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
@@ -28,7 +35,7 @@ export default function AssetGallery() {
                 ) : (
                   <div className="w-full aspect-square flex items-center justify-center bg-black/30">
                     {img.status === 'error' ? (
-                      <span className="text-[var(--error)] text-sm">❌ {img.error}</span>
+                      <span className="text-[var(--error)] text-sm px-4 text-center">❌ {img.error}</span>
                     ) : (
                       <div className="text-center">
                         <div className="animate-pulse-glow text-3xl mb-2">🖼️</div>
@@ -66,7 +73,7 @@ export default function AssetGallery() {
                 ) : (
                   <div className="w-full aspect-video flex items-center justify-center bg-black/30">
                     {vid.status === 'error' ? (
-                      <span className="text-[var(--error)] text-sm">❌ {vid.error}</span>
+                      <span className="text-[var(--error)] text-sm px-4 text-center">❌ {vid.error}</span>
                     ) : (
                       <div className="text-center">
                         <div className="animate-pulse-glow text-3xl mb-2">🎬</div>
@@ -96,31 +103,56 @@ export default function AssetGallery() {
         </div>
       )}
 
-      {/* 音频 */}
-      {audios.length > 0 && (
+      {/* 背景音乐 */}
+      {musics.length > 0 && (
         <div>
-          <h3 className="font-semibold mb-4 flex items-center gap-2">🔊 音频</h3>
+          <h3 className="font-semibold mb-4 flex items-center gap-2">🎵 背景音乐</h3>
           <div className="space-y-3">
-            {audios.map((aud) => (
+            {musics.map((mus) => (
               <div
-                key={aud.id}
+                key={mus.id}
                 className="bg-[var(--card)] rounded-xl border border-[var(--border)] p-4"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-start gap-4">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-emerald-400">{aud.type}</span>
-                      <span className="text-xs text-[var(--muted)]">{aud.voice} · {aud.emotion}</span>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm font-medium text-emerald-400">{mus.scene}</span>
+                      <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded text-xs">
+                        {mus.mood}
+                      </span>
+                      {mus.audioDuration && (
+                        <span className="text-xs text-[var(--muted)]">
+                          {formatDuration(mus.audioDuration)}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-sm text-[var(--muted)]">{aud.text}</p>
+                    <p className="text-xs text-[var(--muted)] mb-1">
+                      <span className="text-emerald-400/60">风格:</span> {mus.prompt}
+                    </p>
+                    <p className="text-xs text-[var(--muted)] whitespace-pre-line">
+                      <span className="text-emerald-400/60">歌词:</span> {mus.lyrics.substring(0, 100)}
+                      {mus.lyrics.length > 100 ? '...' : ''}
+                    </p>
                   </div>
-                  <div className="flex-shrink-0">
-                    {aud.status === 'done' && aud.audioUrl ? (
-                      <audio src={aud.audioUrl} controls className="h-8" />
-                    ) : aud.status === 'error' ? (
-                      <span className="text-[var(--error)] text-xs">❌</span>
+                  <div className="flex-shrink-0 pt-1">
+                    {mus.status === 'done' && mus.audioUrl ? (
+                      <div className="space-y-2">
+                        <audio src={mus.audioUrl} controls className="h-8 w-48" />
+                        <a
+                          href={mus.audioUrl}
+                          download={`music-${mus.id}.mp3`}
+                          className="block text-center text-xs text-indigo-400 hover:text-indigo-300"
+                        >
+                          ⬇️ 下载 MP3
+                        </a>
+                      </div>
+                    ) : mus.status === 'error' ? (
+                      <span className="text-[var(--error)] text-xs">❌ {mus.error}</span>
                     ) : (
-                      <div className="animate-pulse-glow text-xl">🔊</div>
+                      <div className="text-center w-48">
+                        <div className="animate-pulse-glow text-2xl">🎵</div>
+                        <span className="text-xs text-[var(--muted)]">生成中（约1-2分钟）</span>
+                      </div>
                     )}
                   </div>
                 </div>

@@ -34,13 +34,14 @@ export interface VideoAsset {
   provider: 'zhipu' | 'minimax';
 }
 
-export interface AudioAsset {
+export interface MusicAsset {
   id: string;
-  type: string;
-  text: string;
-  voice: string;
-  emotion: string;
+  scene: string;
+  prompt: string;
+  lyrics: string;
+  mood: string;
   audioUrl?: string;
+  audioDuration?: number;  // ms
   status: 'pending' | 'generating' | 'done' | 'error';
   error?: string;
 }
@@ -48,7 +49,7 @@ export interface AudioAsset {
 export interface PromoPrompts {
   imagePrompts: { scene: string; prompt: string; style: string }[];
   videoPrompts: { scene: string; prompt: string; duration: string }[];
-  audioPrompts: { type: string; text: string; voice: string; emotion: string }[];
+  musicPrompts: { scene: string; prompt: string; lyrics: string; mood: string }[];
 }
 
 interface AppState {
@@ -67,7 +68,7 @@ interface AppState {
   // 生成资产
   images: ImageAsset[];
   videos: VideoAsset[];
-  audios: AudioAsset[];
+  musics: MusicAsset[];
 
   // Actions
   setBookContent: (content: string) => void;
@@ -78,10 +79,10 @@ interface AppState {
   setPrompts: (prompts: PromoPrompts) => void;
   setImages: (images: ImageAsset[]) => void;
   setVideos: (videos: VideoAsset[]) => void;
-  setAudios: (audios: AudioAsset[]) => void;
+  setMusics: (musics: MusicAsset[]) => void;
   updateImage: (id: string, patch: Partial<ImageAsset>) => void;
   updateVideo: (id: string, patch: Partial<VideoAsset>) => void;
-  updateAudio: (id: string, patch: Partial<AudioAsset>) => void;
+  updateMusic: (id: string, patch: Partial<MusicAsset>) => void;
   reset: () => void;
 }
 
@@ -94,7 +95,7 @@ const initialState = {
   prompts: null,
   images: [],
   videos: [],
-  audios: [],
+  musics: [],
 };
 
 export const useStore = create<AppState>((set) => ({
@@ -108,14 +109,14 @@ export const useStore = create<AppState>((set) => ({
   setPrompts: (prompts) => set({ prompts }),
   setImages: (images) => set({ images }),
   setVideos: (videos) => set({ videos }),
-  setAudios: (audios) => set({ audios }),
+  setMusics: (musics) => set({ musics }),
 
   updateImage: (id, patch) =>
     set((s) => ({ images: s.images.map((img) => (img.id === id ? { ...img, ...patch } : img)) })),
   updateVideo: (id, patch) =>
     set((s) => ({ videos: s.videos.map((v) => (v.id === id ? { ...v, ...patch } : v)) })),
-  updateAudio: (id, patch) =>
-    set((s) => ({ audios: s.audios.map((a) => (a.id === id ? { ...a, ...patch } : a)) })),
+  updateMusic: (id, patch) =>
+    set((s) => ({ musics: s.musics.map((m) => (m.id === id ? { ...m, ...patch } : m)) })),
 
   reset: () => set(initialState),
 }));

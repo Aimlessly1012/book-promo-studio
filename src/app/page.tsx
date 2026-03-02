@@ -2,29 +2,12 @@
 
 import { useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store';
-import type { ImageAsset, VideoAsset, AudioAsset } from '@/lib/store';
+import type { ImageAsset, VideoAsset, MusicAsset } from '@/lib/store';
 import StepIndicator from './components/StepIndicator';
 import BookInput from './components/BookInput';
 import KeywordPanel from './components/KeywordPanel';
 import PromptPanel from './components/PromptPanel';
 import AssetGallery from './components/AssetGallery';
-
-// Voice mapping: 中文描述 → MiniMax voice_id
-const VOICE_MAP: Record<string, string> = {
-  '磁性男声': 'male-qn-qingse',
-  '温暖男声': 'male-qn-jingying',
-  '知性女声': 'female-shaonv',
-  '温柔女声': 'female-yujie',
-  '男声': 'male-qn-qingse',
-  '女声': 'female-shaonv',
-};
-
-function mapVoiceId(voice: string): string {
-  for (const [key, val] of Object.entries(VOICE_MAP)) {
-    if (voice.includes(key)) return val;
-  }
-  return voice.includes('女') ? 'female-shaonv' : 'male-qn-qingse';
-}
 
 export default function Home() {
   const store = useStore();
@@ -81,21 +64,21 @@ export default function Home() {
       prompt: vp.prompt,
       duration: vp.duration,
       status: 'pending',
-      provider: i % 2 === 0 ? 'zhipu' : 'minimax', // 交替使用两个视频引擎
+      provider: i % 2 === 0 ? 'zhipu' : 'minimax',
     }));
 
-    const auds: AudioAsset[] = prompts.audioPrompts.map((ap, i) => ({
-      id: `aud-${i}`,
-      type: ap.type,
-      text: ap.text,
-      voice: ap.voice,
-      emotion: ap.emotion,
+    const musics: MusicAsset[] = prompts.musicPrompts.map((mp, i) => ({
+      id: `mus-${i}`,
+      scene: mp.scene,
+      prompt: mp.prompt,
+      lyrics: mp.lyrics,
+      mood: mp.mood,
       status: 'pending',
     }));
 
     store.setImages(imgs);
     store.setVideos(vids);
-    store.setAudios(auds);
+    store.setMusics(musics);
 
     // 并发生成图片（串行逐张，避免限流）
     const genImages = async () => {
@@ -141,22 +124,26 @@ export default function Home() {
       }
     };
 
-    // 生成音频
-    const genAudios = async () => {
-      for (const aud of auds) {
-        store.updateAudio(aud.id, { status: 'generating' });
+    // 生成背景音乐（串行，每首约1-2分钟）
+    const genMusics = async () => {
+      for (const mus of musics) {
+        store.updateMusic(mus.id, { status: 'generating' });
         try {
           const res = await fetch('/api/generate/audio', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: aud.text, voiceId: mapVoiceId(aud.voice) }),
+            body: JSON.stringify({ prompt: mus.prompt, lyrics: mus.lyrics }),
           });
           const data = await res.json();
           if (data.error) throw new Error(data.error);
           const audioUrl = `data:${data.mimeType};base64,${data.audioBase64}`;
-          store.updateAudio(aud.id, { status: 'done', audioUrl });
+          store.updateMusic(mus.id, {
+            status: 'done',
+            audioUrl,
+            audioDuration: data.duration,
+          });
         } catch (err) {
-          store.updateAudio(aud.id, {
+          store.updateMusic(mus.id, {
             status: 'error',
             error: err instanceof Error ? err.message : 'Failed',
           });
@@ -165,7 +152,7 @@ export default function Home() {
     };
 
     // 并发执行三类生成
-    await Promise.all([genImages(), genVideos(), genAudios()]);
+    await Promise.all([genImages(), genVideos(), genMusics()]);
 
     // 启动视频轮询
     startVideoPolling();
@@ -182,16 +169,7 @@ export default function Home() {
 
       if (pendingVideos.length === 0) {
         if (pollingRef.current) clearInterval(pollingRef.current);
-        // 检查是否全部完成
-        const state = useStore.getState();
-        const allDone =
-          state.images.every((i) => i.status === 'done' || i.status === 'error') &&
-          state.videos.every((v) => v.status === 'done' || v.status === 'error') &&
-          state.audios.every((a) => a.status === 'done' || a.status === 'error');
-        if (allDone) {
-          store.setStep(4);
-          store.setStatus('done');
-        }
+        checkAllDone();
         return;
       }
 
@@ -213,12 +191,26 @@ export default function Home() {
           } else if (r.status === 'SUCCESS' || r.status === 'Success') {
             store.updateVideo(vid.id, { status: 'done', url: r.url });
           }
-          // PROCESSING/Preparing → keep polling
         });
+
+        // 轮询后再检查是否全部完成
+        checkAllDone();
       } catch {
         // Silently retry
       }
-    }, 10000); // 每 10 秒轮询
+    }, 10000);
+  }, [store]);
+
+  const checkAllDone = useCallback(() => {
+    const state = useStore.getState();
+    const allDone =
+      state.images.every((i) => i.status === 'done' || i.status === 'error') &&
+      state.videos.every((v) => v.status === 'done' || v.status === 'error') &&
+      state.musics.every((m) => m.status === 'done' || m.status === 'error');
+    if (allDone && state.status === 'generating_assets') {
+      store.setStep(4);
+      store.setStatus('done');
+    }
   }, [store]);
 
   // ---- 重置 ----
@@ -280,6 +272,9 @@ export default function Home() {
               >
                 🚀 开始批量生成素材
               </button>
+              <p className="text-xs text-[var(--muted)] mt-2">
+                图片约 10 秒/张 · 视频约 2-5 分钟 · 音乐约 1-2 分钟/首
+              </p>
             </div>
           )}
         </div>
@@ -296,7 +291,7 @@ export default function Home() {
         <div className="text-center mt-8 p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-xl max-w-3xl mx-auto">
           <div className="text-4xl mb-3">🎉</div>
           <p className="text-lg font-medium text-emerald-400">全部素材生成完成！</p>
-          <p className="text-sm text-[var(--muted)] mt-1">图片可右键保存，音频可直接播放下载</p>
+          <p className="text-sm text-[var(--muted)] mt-1">图片可右键保存 · 音乐可直接播放和下载 · 视频可在线预览</p>
           <button
             onClick={handleReset}
             className="mt-4 px-6 py-2 bg-[var(--card)] border border-[var(--border)] rounded-lg hover:bg-[var(--border)] transition-colors"

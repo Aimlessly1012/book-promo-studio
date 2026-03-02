@@ -55,7 +55,6 @@ export async function extractKeywords(bookContent: string) {
 - 所有内容面向推广投放场景优化`;
 
   const result = await claudeChat(system, `请分析以下书籍内容：\n\n${bookContent}`);
-  // 尝试提取 JSON
   const jsonMatch = result.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     return JSON.parse(jsonMatch[0]);
@@ -67,7 +66,7 @@ export async function extractKeywords(bookContent: string) {
 export interface PromoPrompts {
   imagePrompts: { scene: string; prompt: string; style: string }[];
   videoPrompts: { scene: string; prompt: string; duration: string }[];
-  audioPrompts: { type: string; text: string; voice: string; emotion: string }[];
+  musicPrompts: { scene: string; prompt: string; lyrics: string; mood: string }[];
 }
 
 export async function generatePromoPrompts(keywords: Record<string, unknown>): Promise<PromoPrompts> {
@@ -89,12 +88,12 @@ export async function generatePromoPrompts(keywords: Record<string, unknown>): P
       "duration": "建议时长"
     }
   ],
-  "audioPrompts": [
+  "musicPrompts": [
     {
-      "type": "旁白/金句朗读/推广语",
-      "text": "要朗读的中文文本",
-      "voice": "建议音色",
-      "emotion": "情感基调"
+      "scene": "使用场景（中文，如：推广视频背景音乐、书店氛围音乐）",
+      "prompt": "英文音乐风格描述（适配 MiniMax Music-1.5，描述风格、乐器、节奏、情绪，10-300字符）",
+      "lyrics": "歌词内容，支持结构标签 [Intro][Verse][Chorus][Bridge][Outro]。纯器乐可用 [Intro]\\n[instrumental]\\n[Outro]。有歌词时每行用换行分隔，10-600字符",
+      "mood": "情绪标签"
     }
   ]
 }
@@ -102,7 +101,11 @@ export async function generatePromoPrompts(keywords: Record<string, unknown>): P
 要求：
 - imagePrompts 生成 5-8 张不同场景的图片提示词
 - videoPrompts 生成 3-5 个视频片段提示词
-- audioPrompts 生成 3-5 段音频文本
+- musicPrompts 生成 3-5 段背景音乐
+  * 至少 1 段纯器乐（用 [instrumental] 标签）
+  * 至少 1 段带歌词的推广曲
+  * prompt 用英文描述音乐风格（效果更好）
+  * lyrics 支持中英文，建议与书籍主题相关
 - 图片/视频提示词用英文（生成效果更好），场景描述用中文
 - 面向社交媒体推广投放优化（小红书、抖音、微信等）`;
 

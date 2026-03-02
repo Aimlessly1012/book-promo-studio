@@ -1,6 +1,6 @@
 /**
  * MiniMax API 封装
- * - Speech-02 语音合成 (T2A)
+ * - Music-1.5 背景音乐生成
  * - Video-01 视频生成
  */
 
@@ -15,37 +15,51 @@ function getHeaders() {
   };
 }
 
-// ---- 语音合成 (T2A V2) ----
-export interface TTSOptions {
-  text: string;
-  voiceId?: string;  // male-qn-qingse, female-shaonv, etc.
-  speed?: number;    // 0.5 - 2.0
-  model?: string;
+// ---- 背景音乐生成 (Music-1.5) ----
+export interface MusicOptions {
+  prompt: string;    // 风格描述: "Peaceful piano, warm, inspiring"
+  lyrics: string;    // 歌词或 [instrumental] 标签
+  format?: string;   // mp3 | wav | pcm
+  sampleRate?: number;
+  bitrate?: number;
 }
 
-export async function minimaxTTS(opts: TTSOptions) {
-  const { text, voiceId = 'male-qn-qingse', speed = 1.0, model = 'speech-02-hd' } = opts;
-  const res = await fetch(`${MINIMAX_BASE}/t2a_v2`, {
+export async function minimaxMusicGenerate(opts: MusicOptions) {
+  const {
+    prompt,
+    lyrics,
+    format = 'mp3',
+    sampleRate = 32000,
+    bitrate = 128000,
+  } = opts;
+
+  const res = await fetch(`${MINIMAX_BASE}/music_generation`, {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify({
-      model,
-      text,
-      voice_setting: {
-        voice_id: voiceId,
-        speed,
+      model: 'music-1.5',
+      prompt,
+      lyrics,
+      audio_setting: {
+        sample_rate: sampleRate,
+        bitrate,
+        format,
       },
     }),
   });
-  if (!res.ok) throw new Error(`MiniMax TTS error: ${res.status} ${await res.text()}`);
+
+  if (!res.ok) throw new Error(`MiniMax Music error: ${res.status} ${await res.text()}`);
   const data = await res.json();
+
   if (data.base_resp?.status_code !== 0) {
-    throw new Error(`MiniMax TTS failed: ${data.base_resp?.status_msg}`);
+    throw new Error(`MiniMax Music failed: ${data.base_resp?.status_msg}`);
   }
-  // data.data.audio 是 hex 编码的 MP3
+
   return {
     audioHex: data.data.audio as string,
-    duration: data.extra_info?.audio_length as number,
+    duration: data.extra_info?.music_duration as number,   // ms
+    sampleRate: data.extra_info?.music_sample_rate as number,
+    size: data.extra_info?.music_size as number,
     traceId: data.trace_id,
   };
 }
@@ -81,7 +95,7 @@ export async function minimaxVideoQuery(taskId: string) {
   if (!res.ok) throw new Error(`MiniMax Video query error: ${res.status} ${await res.text()}`);
   const data = await res.json();
   return {
-    status: data.status as string,  // Preparing, Processing, Success, Fail
+    status: data.status as string,
     fileId: data.file_id as string | undefined,
     downloadUrl: data.file_id ? `${MINIMAX_BASE}/files/retrieve?file_id=${data.file_id}` : undefined,
   };
