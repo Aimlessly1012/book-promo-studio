@@ -1,33 +1,28 @@
 /**
  * Claude API 封装 — 书籍分析 & 提示词生成
+ * 使用 @anthropic-ai/sdk 官方 SDK
  */
 
-const ANTHROPIC_BASE = 'https://api.anthropic.com/v1';
+import Anthropic from '@anthropic-ai/sdk';
 
-function getHeaders() {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error('ANTHROPIC_API_KEY not set');
-  return {
-    'x-api-key': key,
-    'anthropic-version': '2023-06-01',
-    'Content-Type': 'application/json',
-  };
+function getClient() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
+  return new Anthropic({ apiKey });
 }
 
 export async function claudeChat(systemPrompt: string, userMessage: string, model = 'claude-sonnet-4-20250514') {
-  const res = await fetch(`${ANTHROPIC_BASE}/messages`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify({
-      model,
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
-    }),
+  const client = getClient();
+  const message = await client.messages.create({
+    model,
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMessage }],
   });
-  if (!res.ok) throw new Error(`Claude error: ${res.status} ${await res.text()}`);
-  const data = await res.json();
-  return data.content?.[0]?.text ?? '';
+
+  const block = message.content[0];
+  if (block.type === 'text') return block.text;
+  return '';
 }
 
 // ---- 书籍关键词提取 ----
