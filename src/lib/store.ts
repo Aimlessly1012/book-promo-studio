@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { BookDNA, AdMaterial, Platform } from './claude';
+import type { BookDNA, AdMaterial, Platform, LLMProvider } from './claude';
 
 export type TaskStatus = 'idle' | 'analyzing' | 'generating_assets' | 'done' | 'error';
 
@@ -47,6 +47,7 @@ interface AppState {
   // 输入
   novelText: string;
   platform: Platform;
+  llmProvider: LLMProvider;
 
   // 分析结果
   bookDNA: BookDNA | null;
@@ -60,6 +61,7 @@ interface AppState {
   // Actions
   setNovelText: (text: string) => void;
   setPlatform: (p: Platform) => void;
+  setLLMProvider: (p: LLMProvider) => void;
   setStatus: (status: TaskStatus) => void;
   setStep: (step: number) => void;
   setError: (error: string | null) => void;
@@ -80,6 +82,7 @@ const initialState = {
   error: null,
   novelText: '',
   platform: 'TikTok' as Platform,
+  llmProvider: 'minimax' as LLMProvider,
   bookDNA: null,
   adMaterials: null,
   images: [],
@@ -92,6 +95,7 @@ export const useStore = create<AppState>((set) => ({
 
   setNovelText: (text) => set({ novelText: text }),
   setPlatform: (platform) => set({ platform }),
+  setLLMProvider: (llmProvider) => set({ llmProvider }),
   setStatus: (status) => set({ status }),
   setStep: (step) => set({ step }),
   setError: (error) => set({ error, status: error ? 'error' : 'idle' }),

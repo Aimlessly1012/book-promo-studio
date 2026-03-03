@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { extractKeywords, generatePromoPrompts } from '@/lib/claude';
+import { generateAdMaterials } from '@/lib/claude';
+import type { LLMProvider } from '@/lib/claude';
 
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   try {
-    const { bookContent } = await req.json();
-    if (!bookContent || typeof bookContent !== 'string') {
+    const { novelText, platform, llmProvider } = await req.json();
+    if (!novelText || typeof novelText !== 'string') {
       return NextResponse.json({ error: '请提供书籍内容' }, { status: 400 });
     }
 
-    // Step 1: 提取关键词
-    const keywords = await extractKeywords(bookContent);
+    // 一步生成：分析小说 + 生成全部素材提示词
+    const result = await generateAdMaterials(novelText, platform, llmProvider as LLMProvider);
 
-    // Step 2: 生成提示词
-    const prompts = await generatePromoPrompts(keywords);
-
-    return NextResponse.json({ keywords, prompts });
+    return NextResponse.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('Analyze error:', message);

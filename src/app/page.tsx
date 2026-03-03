@@ -23,7 +23,7 @@ export default function Home() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookContent: store.bookContent }),
+        body: JSON.stringify({ novelText: store.novelText, platform: store.platform, llmProvider: store.llmProvider }),
       });
 
       if (!res.ok) {
@@ -32,10 +32,10 @@ export default function Home() {
       }
 
       const data = await res.json();
-      store.setKeywords(data.keywords);
-      store.setPrompts(data.prompts);
+      store.setBookDNA(data.book_dna);
+      store.setAdMaterials(data.ad_materials);
       store.setStep(2);
-      store.setStatus('generating_prompts');
+      store.setStatus('idle');
     } catch (err) {
       store.setError(err instanceof Error ? err.message : 'Unknown error');
     }
@@ -43,36 +43,36 @@ export default function Home() {
 
   // ---- Step 3: 批量生成素材 ----
   const handleGenerate = useCallback(async () => {
-    const { prompts } = store;
-    if (!prompts) return;
+    const { adMaterials } = store;
+    if (!adMaterials?.length) return;
 
     store.setStatus('generating_assets');
     store.setStep(3);
 
-    // 初始化资产列表
-    const imgs: ImageAsset[] = prompts.imagePrompts.map((ip, i) => ({
+    // 初始化资产列表 — 每个 ad angle 生成一张图、一段视频、一首音乐
+    const imgs: ImageAsset[] = adMaterials.map((mat, i) => ({
       id: `img-${i}`,
-      scene: ip.scene,
-      prompt: ip.prompt,
-      style: ip.style,
+      angleIndex: i,
+      angleName: mat.angle_name,
+      prompt: mat.image_prompt,
       status: 'pending',
     }));
 
-    const vids: VideoAsset[] = prompts.videoPrompts.map((vp, i) => ({
+    const vids: VideoAsset[] = adMaterials.map((mat, i) => ({
       id: `vid-${i}`,
-      scene: vp.scene,
-      prompt: vp.prompt,
-      duration: vp.duration,
+      angleIndex: i,
+      angleName: mat.angle_name,
+      prompt: mat.video_prompt,
       status: 'pending',
       provider: i % 2 === 0 ? 'zhipu' : 'minimax',
     }));
 
-    const musics: MusicAsset[] = prompts.musicPrompts.map((mp, i) => ({
+    const musics: MusicAsset[] = adMaterials.map((mat, i) => ({
       id: `mus-${i}`,
-      scene: mp.scene,
-      prompt: mp.prompt,
-      lyrics: mp.lyrics,
-      mood: mp.mood,
+      angleIndex: i,
+      angleName: mat.angle_name,
+      prompt: mat.bgm_prompt,
+      lyrics: mat.bgm_lyrics,
       status: 'pending',
     }));
 
@@ -261,7 +261,7 @@ export default function Home() {
 
       {step >= 2 && <KeywordPanel />}
 
-      {step >= 2 && store.prompts && (
+      {step >= 2 && store.adMaterials && (
         <div className="mt-8">
           <PromptPanel />
           {step === 2 && (

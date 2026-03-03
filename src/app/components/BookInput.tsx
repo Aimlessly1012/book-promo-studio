@@ -2,9 +2,15 @@
 
 import { useState } from 'react';
 import { useStore } from '@/lib/store';
+import type { LLMProvider } from '@/lib/claude';
+
+const PROVIDERS: { value: LLMProvider; label: string; badge: string }[] = [
+  { value: 'minimax', label: 'MiniMax', badge: 'MiniMax-Text-01' },
+  { value: 'claude', label: 'Claude', badge: 'claude-sonnet-4-5' },
+];
 
 export default function BookInput({ onSubmit }: { onSubmit: () => void }) {
-  const { bookContent, setBookContent } = useStore();
+  const { novelText: bookContent, setNovelText: setBookContent, llmProvider, setLLMProvider } = useStore();
   const [dragActive, setDragActive] = useState(false);
 
   const handleFile = async (file: File) => {
@@ -42,22 +48,44 @@ export default function BookInput({ onSubmit }: { onSubmit: () => void }) {
 
       <textarea
         className="w-full h-64 bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 text-sm resize-none focus:outline-none focus:border-indigo-500 transition-colors"
-        placeholder="在这里粘贴书籍内容...&#10;&#10;例如：书名、作者、简介、目录、核心章节内容等"
+        placeholder={`在这里粘贴书籍内容...\n\n例如：书名、作者、简介、目录、核心章节内容等`}
         value={bookContent}
         onChange={(e) => setBookContent(e.target.value)}
       />
 
+      {/* 模型选择 + 提交 */}
       <div className="flex items-center justify-between mt-4">
         <span className="text-sm text-[var(--muted)]">
-          {bookContent.length > 0 ? `${bookContent.length} 字` : '等待输入...'}
+          {bookContent?.length > 0 ? `${bookContent?.length} 字` : '等待输入...'}
         </span>
-        <button
-          onClick={onSubmit}
-          disabled={bookContent.length < 50}
-          className="px-6 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
-        >
-          开始分析 →
-        </button>
+
+        <div className="flex items-center gap-3">
+          {/* LLM Provider Toggle */}
+          <div className="flex items-center gap-1 bg-[var(--card)] border border-[var(--border)] rounded-lg p-1">
+            {PROVIDERS.map((p) => (
+              <button
+                key={p.value}
+                onClick={() => setLLMProvider(p.value)}
+                title={p.badge}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  llmProvider === p.value
+                    ? 'bg-indigo-500 text-white'
+                    : 'text-[var(--muted)] hover:text-white'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={onSubmit}
+            disabled={bookContent?.length < 50}
+            className="px-6 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
+          >
+            开始分析 →
+          </button>
+        </div>
       </div>
     </div>
   );

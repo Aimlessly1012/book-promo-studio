@@ -3,83 +3,58 @@
 import { useStore } from '@/lib/store';
 
 export default function KeywordPanel() {
-  const { keywords } = useStore();
-  if (!keywords) return null;
+  const { bookDNA, adMaterials } = useStore();
+  if (!bookDNA) return null;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold">🔍 分析结果</h2>
-        <p className="text-indigo-400 mt-1">{keywords.title}</p>
-        <p className="text-[var(--muted)] text-sm mt-1">{keywords.coreTheme}</p>
+        <h2 className="text-2xl font-bold">🔍 书籍 DNA 分析</h2>
+        <p className="text-[var(--muted)] text-sm mt-1">Claude 从书籍中提取的核心信息</p>
       </div>
 
-      {/* 关键词云 */}
+      {/* 核心标签 */}
       <div className="bg-[var(--card)] rounded-xl p-6 border border-[var(--border)]">
-        <h3 className="font-semibold mb-3">🏷️ 核心关键词</h3>
+        <h3 className="font-semibold mb-3">🏷️ 核心标签 / Tropes</h3>
         <div className="flex flex-wrap gap-2">
-          {keywords.keywords.map((kw, i) => (
+          {bookDNA.primary_tropes.map((trope, i) => (
             <span
               key={i}
-              className="px-3 py-1 rounded-full text-sm border transition-colors hover:bg-indigo-500/20"
-              style={{
-                borderColor: `hsl(${240 + i * 8}, 60%, ${50 + kw.weight * 3}%)`,
-                fontSize: `${0.75 + kw.weight * 0.04}rem`,
-              }}
+              className="px-3 py-1 rounded-full text-sm border border-indigo-500/50 bg-indigo-500/10 text-indigo-300"
             >
-              {kw.word}
-              <span className="text-xs text-[var(--muted)] ml-1">{kw.emotion}</span>
+              {trope}
             </span>
           ))}
         </div>
       </div>
 
-      {/* 卖点 */}
+      {/* 视觉风格 & 情感钩子 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-[var(--card)] rounded-xl p-6 border border-[var(--border)]">
-          <h3 className="font-semibold mb-3">💎 核心卖点</h3>
-          <ul className="space-y-2">
-            {keywords.sellingPoints.map((sp, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm">
-                <span className="text-indigo-400 mt-0.5">•</span>
-                <span>{sp}</span>
-              </li>
-            ))}
-          </ul>
+          <h3 className="font-semibold mb-3">🎨 视觉风格</h3>
+          <p className="text-sm text-amber-300/80 italic">"{bookDNA.visual_aesthetic}"</p>
         </div>
-
         <div className="bg-[var(--card)] rounded-xl p-6 border border-[var(--border)]">
-          <h3 className="font-semibold mb-3">🎯 目标人群</h3>
-          <div className="flex flex-wrap gap-2">
-            {keywords.targetAudience.map((ta, i) => (
-              <span key={i} className="px-3 py-1 bg-emerald-500/10 text-emerald-400 rounded-full text-sm">
-                {ta}
-              </span>
+          <h3 className="font-semibold mb-3">❤️ 情感触发点</h3>
+          <p className="text-sm text-rose-300/80 italic">"{bookDNA.emotional_trigger}"</p>
+        </div>
+      </div>
+
+      {/* 广告角度预览 */}
+      {adMaterials && (
+        <div className="bg-[var(--card)] rounded-xl p-6 border border-[var(--border)]">
+          <h3 className="font-semibold mb-4">📐 生成的 {adMaterials.length} 个广告角度</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {adMaterials.map((mat, i) => (
+              <div key={i} className="bg-black/30 rounded-lg p-4">
+                <div className="text-xs text-indigo-400 font-medium mb-1">角度 {i + 1}</div>
+                <div className="text-sm font-semibold mb-2">{mat.angle_name}</div>
+                <p className="text-xs text-[var(--muted)] italic">"{mat.copywriting.hook}"</p>
+              </div>
             ))}
           </div>
         </div>
-      </div>
-
-      {/* 情感钩子 & 金句 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-[var(--card)] rounded-xl p-6 border border-[var(--border)]">
-          <h3 className="font-semibold mb-3">❤️ 情感钩子</h3>
-          <ul className="space-y-2">
-            {keywords.emotionalHooks.map((eh, i) => (
-              <li key={i} className="text-sm text-amber-300/80 italic">&ldquo;{eh}&rdquo;</li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="bg-[var(--card)] rounded-xl p-6 border border-[var(--border)]">
-          <h3 className="font-semibold mb-3">✨ 金句摘录</h3>
-          <ul className="space-y-2">
-            {keywords.goldenQuotes.map((gq, i) => (
-              <li key={i} className="text-sm text-indigo-300/80 italic">&ldquo;{gq}&rdquo;</li>
-            ))}
-          </ul>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
