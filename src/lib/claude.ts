@@ -31,7 +31,7 @@ export async function minimaxChat(systemPrompt: string, userMessage: string, mod
   const apiKey = process.env.MINIMAX_API_KEY;
   if (!apiKey) throw new Error('MINIMAX_API_KEY not set');
 
-  const res = await fetch('https://api.minimaxi.chat/v1/text/chatcompletion_v2', {
+  const res = await fetch('https://api.minimaxi.com/v1/text/chatcompletion_v2', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
