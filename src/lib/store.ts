@@ -1,22 +1,14 @@
 import { create } from 'zustand';
+import type { BookDNA, AdMaterial, Platform } from './claude';
 
-export type TaskStatus = 'idle' | 'analyzing' | 'generating_prompts' | 'generating_assets' | 'done' | 'error';
+export type TaskStatus = 'idle' | 'analyzing' | 'generating_assets' | 'done' | 'error';
 
-export interface KeywordData {
-  title: string;
-  coreTheme: string;
-  keywords: { word: string; emotion: string; weight: number }[];
-  sellingPoints: string[];
-  targetAudience: string[];
-  emotionalHooks: string[];
-  goldenQuotes: string[];
-}
-
+// ---- 生成资产 ----
 export interface ImageAsset {
   id: string;
-  scene: string;
+  angleIndex: number;
+  angleName: string;
   prompt: string;
-  style: string;
   url?: string;
   status: 'pending' | 'generating' | 'done' | 'error';
   error?: string;
@@ -24,9 +16,9 @@ export interface ImageAsset {
 
 export interface VideoAsset {
   id: string;
-  scene: string;
+  angleIndex: number;
+  angleName: string;
   prompt: string;
-  duration: string;
   taskId?: string;
   url?: string;
   status: 'pending' | 'generating' | 'polling' | 'done' | 'error';
@@ -36,20 +28,14 @@ export interface VideoAsset {
 
 export interface MusicAsset {
   id: string;
-  scene: string;
+  angleIndex: number;
+  angleName: string;
   prompt: string;
   lyrics: string;
-  mood: string;
   audioUrl?: string;
-  audioDuration?: number;  // ms
+  audioDuration?: number;
   status: 'pending' | 'generating' | 'done' | 'error';
   error?: string;
-}
-
-export interface PromoPrompts {
-  imagePrompts: { scene: string; prompt: string; style: string }[];
-  videoPrompts: { scene: string; prompt: string; duration: string }[];
-  musicPrompts: { scene: string; prompt: string; lyrics: string; mood: string }[];
 }
 
 interface AppState {
@@ -59,11 +45,12 @@ interface AppState {
   error: string | null;
 
   // 输入
-  bookContent: string;
+  novelText: string;
+  platform: Platform;
 
   // 分析结果
-  keywords: KeywordData | null;
-  prompts: PromoPrompts | null;
+  bookDNA: BookDNA | null;
+  adMaterials: AdMaterial[] | null;
 
   // 生成资产
   images: ImageAsset[];
@@ -71,12 +58,13 @@ interface AppState {
   musics: MusicAsset[];
 
   // Actions
-  setBookContent: (content: string) => void;
+  setNovelText: (text: string) => void;
+  setPlatform: (p: Platform) => void;
   setStatus: (status: TaskStatus) => void;
   setStep: (step: number) => void;
   setError: (error: string | null) => void;
-  setKeywords: (kw: KeywordData) => void;
-  setPrompts: (prompts: PromoPrompts) => void;
+  setBookDNA: (dna: BookDNA) => void;
+  setAdMaterials: (mats: AdMaterial[]) => void;
   setImages: (images: ImageAsset[]) => void;
   setVideos: (videos: VideoAsset[]) => void;
   setMusics: (musics: MusicAsset[]) => void;
@@ -90,9 +78,10 @@ const initialState = {
   status: 'idle' as TaskStatus,
   step: 0,
   error: null,
-  bookContent: '',
-  keywords: null,
-  prompts: null,
+  novelText: '',
+  platform: 'TikTok' as Platform,
+  bookDNA: null,
+  adMaterials: null,
   images: [],
   videos: [],
   musics: [],
@@ -101,12 +90,13 @@ const initialState = {
 export const useStore = create<AppState>((set) => ({
   ...initialState,
 
-  setBookContent: (content) => set({ bookContent: content }),
+  setNovelText: (text) => set({ novelText: text }),
+  setPlatform: (platform) => set({ platform }),
   setStatus: (status) => set({ status }),
   setStep: (step) => set({ step }),
   setError: (error) => set({ error, status: error ? 'error' : 'idle' }),
-  setKeywords: (keywords) => set({ keywords }),
-  setPrompts: (prompts) => set({ prompts }),
+  setBookDNA: (bookDNA) => set({ bookDNA }),
+  setAdMaterials: (adMaterials) => set({ adMaterials }),
   setImages: (images) => set({ images }),
   setVideos: (videos) => set({ videos }),
   setMusics: (musics) => set({ musics }),
