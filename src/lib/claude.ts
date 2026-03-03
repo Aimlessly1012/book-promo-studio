@@ -200,7 +200,9 @@ export async function generateAdMaterials(
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     try {
-      return JSON.parse(jsonMatch[0]) as SkillOutput;
+      // 修复 LLM 常见的非法转义字符（如 \' \- \. \! 等）
+      const repaired = jsonMatch[0].replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+      return JSON.parse(repaired) as SkillOutput;
     } catch (e) {
       console.error('[generateAdMaterials] JSON.parse failed:', e);
       console.error('[generateAdMaterials] matched string preview:', jsonMatch[0].slice(0, 500));

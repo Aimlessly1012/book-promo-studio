@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { BookDNA, AdMaterial, Platform, LLMProvider } from './claude';
 
 export type TaskStatus = 'idle' | 'analyzing' | 'generating_assets' | 'done' | 'error';
+export type GenerationMode = 'image' | 'copy' | 'video' | null;
 
 // ---- 生成资产 ----
 export interface ImageAsset {
@@ -23,7 +24,7 @@ export interface VideoAsset {
   url?: string;
   status: 'pending' | 'generating' | 'polling' | 'done' | 'error';
   error?: string;
-  provider: 'zhipu' | 'minimax';
+  provider: 'zhipu' | 'minimax' | 'doubao';
 }
 
 export interface MusicAsset {
@@ -48,6 +49,7 @@ interface AppState {
   novelText: string;
   platform: Platform;
   llmProvider: LLMProvider;
+  generationMode: GenerationMode;
 
   // 分析结果
   bookDNA: BookDNA | null;
@@ -62,6 +64,7 @@ interface AppState {
   setNovelText: (text: string) => void;
   setPlatform: (p: Platform) => void;
   setLLMProvider: (p: LLMProvider) => void;
+  setGenerationMode: (m: GenerationMode) => void;
   setStatus: (status: TaskStatus) => void;
   setStep: (step: number) => void;
   setError: (error: string | null) => void;
@@ -83,6 +86,7 @@ const initialState = {
   novelText: '',
   platform: 'TikTok' as Platform,
   llmProvider: 'minimax' as LLMProvider,
+  generationMode: null as GenerationMode,
   bookDNA: null,
   adMaterials: null,
   images: [],
@@ -96,6 +100,7 @@ export const useStore = create<AppState>((set) => ({
   setNovelText: (text) => set({ novelText: text }),
   setPlatform: (platform) => set({ platform }),
   setLLMProvider: (llmProvider) => set({ llmProvider }),
+  setGenerationMode: (generationMode) => set({ generationMode }),
   setStatus: (status) => set({ status }),
   setStep: (step) => set({ step }),
   setError: (error) => set({ error, status: error ? 'error' : 'idle' }),
