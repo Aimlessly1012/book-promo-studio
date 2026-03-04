@@ -259,6 +259,33 @@ For instrumental only, use: [Intro]\\n[instrumental]\\n[Outro]
 For tracks with vocals, write lyrics matching the book's theme, 10-600 characters.
 At least 1 of the 3 angles should have instrumental BGM, and at least 1 should have vocal lyrics.
 
+At least 1 of the 3 angles should have instrumental BGM, and at least 1 should have vocal lyrics.
+
+### subtitle_style (REQUIRED)
+Based on the emotional tone of this angle, choose ONE subtitle style template from below:
+
+**Template A - "intense"** (for conflict, betrayal, revenge, thriller):
+- position: "top", fontSize: "large", color: "red", background: "semi-transparent-black"
+
+**Template B - "romantic"** (for love, attraction, sweet moments):
+- position: "bottom", fontSize: "medium", color: "pink", background: "semi-transparent-black"
+
+**Template C - "mysterious"** (for secrets, identity reveals, suspense):
+- position: "top", fontSize: "large", color: "yellow", background: "blur"
+
+**Template D - "general"** (for normal ads, informational):
+- position: "bottom", fontSize: "medium", color: "white", background: "semi-transparent-black"
+
+**Template E - "dramatic"** (for emotional reveals, plot twists):
+- position: "center", fontSize: "large", color: "white", background: "blur"
+
+Select the template that best matches this angle's emotional tone. Output as:
+- For Template A: "subtitle_style": { "position": "top", "fontSize": "large", "color": "red", "background": "semi-transparent-black" }
+- For Template B: "subtitle_style": { "position": "bottom", "fontSize": "medium", "color": "pink", "background": "semi-transparent-black" }
+- For Template C: "subtitle_style": { "position": "top", "fontSize": "large", "color": "yellow", "background": "blur" }
+- For Template D: "subtitle_style": { "position": "bottom", "fontSize": "medium", "color": "white", "background": "semi-transparent-black" }
+- For Template E: "subtitle_style": { "position": "center", "fontSize": "large", "color": "white", "background": "blur" }
+
 ## Language Rules
 - copywriting & voiceover script: English (follow platform rules above)
 - image_prompt / video_prompt / bgm_prompt: ALWAYS English, zero Chinese characters
@@ -281,7 +308,13 @@ Schema:
       "image_prompt": "string",
       "video_prompt": "string",
       "bgm_prompt": "string",
-      "bgm_lyrics": "string"
+      "bgm_lyrics": "string",
+      "subtitle_style": {
+        "position": "top" | "center" | "bottom",
+        "fontSize": "small" | "medium" | "large",
+        "color": "white" | "yellow" | "red" | "pink" | "cyan",
+        "background": "none" | "semi-transparent-black" | "blur"
+      }
     }
   ]
 }
@@ -294,6 +327,13 @@ export interface BookDNA {
   primary_tropes: string[];
   visual_aesthetic: string;
   emotional_trigger: string;
+}
+
+export interface SubtitleStyle {
+  position: 'top' | 'center' | 'bottom';
+  fontSize: 'small' | 'medium' | 'large';
+  color: 'white' | 'yellow' | 'red' | 'pink' | 'cyan';
+  background: 'none' | 'semi-transparent-black' | 'blur';
 }
 
 export interface AdMaterial {
@@ -311,6 +351,7 @@ export interface AdMaterial {
   video_prompt: string;
   bgm_prompt: string;
   bgm_lyrics: string;
+  subtitle_style?: SubtitleStyle;
 }
 
 export interface SkillOutput {

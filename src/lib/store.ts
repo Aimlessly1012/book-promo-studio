@@ -23,7 +23,7 @@ export interface VideoAsset {
   taskId?: string;
   url?: string;
   sourceImageUrl?: string; // 图生视频时的源图片
-  status: 'pending' | 'generating' | 'polling' | 'done' | 'error';
+  status: 'pending' | 'generating' | 'polling' | 'burning' | 'done' | 'error';
   error?: string;
   provider: 'zhipu' | 'minimax' | 'doubao';
 }

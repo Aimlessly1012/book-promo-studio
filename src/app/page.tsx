@@ -228,9 +228,47 @@ export default function Home() {
         try {
           const res = await fetch(`/api/generate/video?taskId=${vid.taskId}`);
           const data = await res.json();
-          if (data.error) store.updateVideo(vid.id, { status: 'error', error: data.error });
-          else if (data.status === 'succeeded') store.updateVideo(vid.id, { status: 'done', url: data.url });
-          else if (data.status === 'failed') store.updateVideo(vid.id, { status: 'error', error: '生成失败' });
+          if (data.error) {
+            store.updateVideo(vid.id, { status: 'error', error: data.error });
+          } else if (data.status === 'succeeded' && data.url) {
+            // 视频生成完成 → 自动烧录字幕
+            store.updateVideo(vid.id, { status: 'burning', url: data.url });
+            const adMats = useStore.getState().adMaterials;
+            const mat = adMats?.[vid.angleIndex];
+            if (mat) {
+              try {
+                const burnRes = await fetch('/api/generate/burn-subtitle', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    videoUrl: data.url,
+                    hook: mat.copywriting.hook,
+                    body: mat.copywriting.body,
+                    cta: mat.copywriting.cta,
+                    angleName: mat.angle_name,
+                    subtitleStyle: mat.subtitle_style,
+                  }),
+                });
+                const burnData = await burnRes.json();
+                if (burnData.videoBase64) {
+                  const blob = await fetch(`data:video/mp4;base64,${burnData.videoBase64}`).then(r => r.blob());
+                  const burnedUrl = URL.createObjectURL(blob);
+                  store.updateVideo(vid.id, { status: 'done', url: burnedUrl });
+                } else {
+                  // 烧录失败，用原始视频
+                  console.warn('[burn-subtitle] failed, using original:', burnData.error);
+                  store.updateVideo(vid.id, { status: 'done', url: data.url });
+                }
+              } catch (burnErr) {
+                console.warn('[burn-subtitle] error, using original:', burnErr);
+                store.updateVideo(vid.id, { status: 'done', url: data.url });
+              }
+            } else {
+              store.updateVideo(vid.id, { status: 'done', url: data.url });
+            }
+          } else if (data.status === 'failed') {
+            store.updateVideo(vid.id, { status: 'error', error: '生成失败' });
+          }
         } catch { /* retry */ }
       }
     }, 10000);
