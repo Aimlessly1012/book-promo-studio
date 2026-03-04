@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useStore } from '@/lib/store';
 import type { Platform, CopyType, MaterialType, LLMProvider } from '@/lib/claude';
 
@@ -37,16 +37,216 @@ const PROVIDERS: { value: LLMProvider; label: string }[] = [
 
 const ANGLE_OPTIONS = [1, 2, 3, 5, 8];
 
-// ---- 组件 ----
-export default function ConfigForm({ onSubmit }: { onSubmit: () => void }) {
-  const store = useStore();
-  const [dragActive, setDragActive] = useState(false);
+// 书籍搜索结果类型（来自 BookDropDto，id=skuId，bookId 单独字段）
+interface BookOption {
+  id: string;       // API 返回的 id（通常为 skuId）
+  name: string;
+  language: string;
+  bookId?: string;  // 若 API 额外返回 bookId
+  skuId?: string;   // 若 API 额外返回 skuId（备用）
+}
 
-  const handleFile = async (file: File) => {
-    const text = await file.text();
-    store.setNovelText(text);
+// ---- 书籍下拉搜索子组件 ----
+function BookSearchSection() {
+  const store = useStore();
+  const [keyword, setKeyword] = useState('');
+  const [options, setOptions] = useState<BookOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedBook, setSelectedBook] = useState<BookOption | null>(null);
+  const [searchError, setSearchError] = useState('');
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 搜索书籍（防抖 400ms）
+  const handleSearch = useCallback((value: string) => {
+    setKeyword(value);
+    setSearchError('');
+    if (!value.trim()) {
+      setOptions([]);
+      setShowDropdown(false);
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/book/search?key=${encodeURIComponent(value)}&type=2`);
+        const json = await res.json();
+        const list: BookOption[] = Array.isArray(json.data)
+          ? json.data.map((item: Record<string, string>) => ({
+              id: item.id ?? '',
+              name: item.name ?? '',
+              language: item.language ?? '',
+              bookId: item.bookId ?? item.book_id ?? undefined,
+              skuId: item.skuId ?? item.sku_id ?? item.id ?? undefined,
+            }))
+          : [];
+        setOptions(list);
+        setShowDropdown(true);
+      } catch {
+        setSearchError('搜索失败，请检查网络');
+      } finally {
+        setLoading(false);
+      }
+    }, 400);
+  }, []);
+
+  // 选中书籍
+  const handleSelect = (book: BookOption) => {
+    setSelectedBook(book);
+    setKeyword(book.name);
+    setShowDropdown(false);
+    // 清空已有内容，等用户点获取
+    store.setNovelText('');
   };
 
+  // 获取书籍免费章节内容
+  const handleFetchContent = async () => {
+    if (!selectedBook) return;
+    setFetching(true);
+    setSearchError('');
+    try {
+      // 优先使用明确的 bookId 和 skuId 字段，fallback 到 id
+      const bookId = selectedBook.bookId ?? selectedBook.id;
+      const skuId = selectedBook.skuId ?? selectedBook.id;
+      const params = new URLSearchParams();
+      if (bookId) params.set('bookId', bookId);
+      if (skuId) params.set('skuId', skuId);
+
+      const res = await fetch(`/api/book/chapters?${params.toString()}`);
+      const json = await res.json();
+
+      if (json.code !== 200 || !json.data) {
+        throw new Error(json.msg || '获取章节失败');
+      }
+
+      const { chapters, cover } = json.data as {
+        chapters: { title: string; order: number; chapterContent: string }[];
+        cover?: string;
+      };
+
+      if (!chapters || chapters.length === 0) {
+        throw new Error('该书暂无免费章节内容');
+      }
+
+      const sorted = [...chapters].sort((a, b) => a.order - b.order);
+      const lines: string[] = [
+        `书名：${selectedBook.name}`,
+        `语言：${selectedBook.language}`,
+        cover ? `封面：${cover}` : '',
+        '',
+        ...sorted.flatMap((ch) => [
+          `【第 ${ch.order} 章】${ch.title}`,
+          ch.chapterContent ?? '',
+          '',
+        ]),
+      ].filter((l, i) => !(l === '' && i === 2));
+
+      store.setNovelText(lines.join('\n'));
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : '获取内容失败');
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  return (
+    <section className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5">
+      <p className="text-sm font-semibold mb-3 text-[var(--muted)]">📖 书籍</p>
+
+      {/* 搜索 + 选中书籍 */}
+      <div className="relative mb-3">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={keyword}
+              onChange={(e) => handleSearch(e.target.value)}
+              onFocus={() => options.length > 0 && setShowDropdown(true)}
+              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+              placeholder="输入书籍名称或 SKUID 搜索..."
+              className="w-full px-3 py-2 bg-transparent border border-[var(--border)] rounded-xl text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+            />
+            {loading && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--muted)] animate-pulse">
+                搜索中...
+              </div>
+            )}
+          </div>
+
+          {/* 获取书籍内容按钮 */}
+          <button
+            onClick={handleFetchContent}
+            disabled={!selectedBook || fetching}
+            title={!selectedBook ? '请先搜索并选择书籍' : '获取书籍内容'}
+            className="shrink-0 px-3 py-2 rounded-xl text-xs font-medium border transition-colors disabled:opacity-40 disabled:cursor-not-allowed border-indigo-500/60 text-indigo-400 hover:bg-indigo-500/10"
+          >
+            {fetching ? '获取中...' : '📥 获取内容'}
+          </button>
+        </div>
+
+        {/* 下拉列表 */}
+        {showDropdown && options.length > 0 && (
+          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1a1a2e] border border-[var(--border)] rounded-xl overflow-hidden shadow-2xl max-h-48 overflow-y-auto">
+            {options.map((book) => (
+              <button
+                key={book.id}
+                onMouseDown={() => handleSelect(book)}
+                className="w-full px-4 py-2.5 text-left text-sm hover:bg-indigo-500/10 transition-colors flex items-center justify-between"
+              >
+                <div>
+                  <span className="font-medium text-white">{book.name}</span>
+                  <span className="ml-2 text-xs text-[var(--muted)]">{book.id}</span>
+                </div>
+                <span className="text-xs text-[var(--muted)] shrink-0 ml-2">{book.language}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {showDropdown && !loading && options.length === 0 && keyword && (
+          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1a1a2e] border border-[var(--border)] rounded-xl px-4 py-3 text-xs text-[var(--muted)] shadow-2xl">
+            未找到相关书籍
+          </div>
+        )}
+      </div>
+
+      {/* 已选书籍标签 */}
+      {selectedBook && (
+        <div className="flex items-center gap-2 mb-3 px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+          <span className="text-xs text-indigo-300">✓ 已选：</span>
+          <span className="text-xs font-medium text-white truncate">{selectedBook.name}</span>
+          <span className="text-xs text-[var(--muted)]">#{selectedBook.id}</span>
+          <button
+            onClick={() => { setSelectedBook(null); setKeyword(''); store.setNovelText(''); }}
+            className="ml-auto text-xs text-[var(--muted)] hover:text-white"
+          >✕</button>
+        </div>
+      )}
+
+      {searchError && (
+        <p className="text-xs text-red-400 mb-2">⚠️ {searchError}</p>
+      )}
+
+      {/* 手动输入区（备用） */}
+      <textarea
+        className="w-full h-36 bg-transparent border border-[var(--border)] rounded-xl p-3 text-sm resize-none focus:outline-none focus:border-indigo-500 transition-colors"
+        placeholder={`也可直接粘贴书籍内容...\n\n书名、简介、目录、核心章节等`}
+        value={store.novelText}
+        onChange={(e) => store.setNovelText(e.target.value)}
+      />
+      <div className="flex items-center justify-end mt-1">
+        <span className="text-xs text-[var(--muted)]">
+          {store.novelText.length > 0 ? `${store.novelText.length} 字` : '≥ 50 字可提交'}
+        </span>
+      </div>
+    </section>
+  );
+}
+
+// ---- 主组件 ----
+export default function ConfigForm({ onSubmit }: { onSubmit: () => void }) {
+  const store = useStore();
   const canSubmit = store.novelText.length >= 50;
 
   return (
@@ -73,46 +273,8 @@ export default function ConfigForm({ onSubmit }: { onSubmit: () => void }) {
         </div>
       </section>
 
-      {/* 书籍内容 */}
-      <section className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5">
-        <p className="text-sm font-semibold mb-3 text-[var(--muted)]">📖 书籍内容</p>
-        {/* 拖拽区 */}
-        <div
-          className={`border border-dashed rounded-xl p-3 text-center text-xs mb-3 cursor-pointer transition-colors ${
-            dragActive
-              ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300'
-              : 'border-[var(--border)] text-[var(--muted)] hover:border-indigo-400'
-          }`}
-          onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
-          onDragLeave={() => setDragActive(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragActive(false);
-            const file = e.dataTransfer.files[0];
-            if (file) handleFile(file);
-          }}
-        >
-          📄 拖拽 .txt 文件到这里
-        </div>
-        <textarea
-          className="w-full h-48 bg-transparent border border-[var(--border)] rounded-xl p-3 text-sm resize-none focus:outline-none focus:border-indigo-500 transition-colors"
-          placeholder={`粘贴书籍内容...\n\n书名、简介、目录、核心章节等`}
-          value={store.novelText}
-          onChange={(e) => store.setNovelText(e.target.value)}
-        />
-        <div className="flex items-center justify-between mt-2">
-          <button
-            disabled
-            title="后期接入书籍接口"
-            className="text-xs text-[var(--muted)] opacity-40 flex items-center gap-1 cursor-not-allowed"
-          >
-            🔗 从接口导入（即将上线）
-          </button>
-          <span className="text-xs text-[var(--muted)]">
-            {store.novelText.length > 0 ? `${store.novelText.length} 字` : '≥ 50 字可提交'}
-          </span>
-        </div>
-      </section>
+      {/* 书籍搜索 */}
+      <BookSearchSection />
 
       {/* 文案类型 */}
       <section className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5">
@@ -179,7 +341,6 @@ export default function ConfigForm({ onSubmit }: { onSubmit: () => void }) {
       {/* 角度数量 + LLM */}
       <section className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5">
         <div className="flex items-start justify-between gap-6">
-          {/* 角度数量 */}
           <div className="flex-1">
             <p className="text-sm font-semibold mb-3 text-[var(--muted)]">
               📐 广告角度数量
@@ -213,7 +374,6 @@ export default function ConfigForm({ onSubmit }: { onSubmit: () => void }) {
             </div>
           </div>
 
-          {/* LLM */}
           <div>
             <p className="text-sm font-semibold mb-3 text-[var(--muted)]">🤖 模型</p>
             <div className="flex flex-col gap-1.5">
