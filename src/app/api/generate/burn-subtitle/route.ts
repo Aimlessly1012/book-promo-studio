@@ -65,11 +65,12 @@ Respond with ONLY a JSON object, no other text:
 }
 
 function getDefaultStyle(): ParsedStyle {
+  // TikTok 风格：白色文字、黑色描边、无背景、底部居中、大字间距
   return {
-    fontSize: 24,
-    marginV: 35,  // 顶部位置
-    primaryColour: '&H00FFFFFF',
-    backColour: '&H00000000',  // 无背景，避免遮挡
+    fontSize: 26,
+    marginV: 450,  // 底部居中
+    primaryColour: '&H00FFFFFF',  // 白色
+    backColour: '&H00000000',  // 无背景
     fontName: 'DejaVu Sans Bold',
   };
 }
@@ -256,7 +257,8 @@ export async function POST(req: NextRequest) {
     fs.writeFileSync(srtPath, srt, 'utf-8');
 
     console.log('[burn-subtitle] Burning subtitles...');
-    const ffStyle = `FontSize=${dynamicFontSize},PrimaryColour=${style.primaryColour},BackColour=${style.backColour},BorderStyle=3,MarginV=${style.marginV},Outline=1,Shadow=1,FontName=${style.fontName}`;
+    // TikTok 风格：白色文字 + 黑色描边 + 无背景 + 大字间距
+    const ffStyle = `FontSize=${dynamicFontSize},PrimaryColour=${style.primaryColour},BackColour=${style.backColour},BorderStyle=3,MarginV=${style.marginV},Outline=2,OutlineColour=&H00000000,Spacing=5,FontName=${style.fontName}`;
     console.log('[burn-subtitle] FFmpeg style:', ffStyle);
 
     await new Promise<void>((resolve, reject) => {
