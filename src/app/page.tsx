@@ -3,9 +3,7 @@
 import { useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store';
 import type { ImageAsset, VideoAsset } from '@/lib/store';
-import type { GenerationMode } from '@/lib/store';
-import StepIndicator from './components/StepIndicator';
-import BookInput from './components/BookInput';
+import ConfigForm from './components/ConfigForm';
 import KeywordPanel from './components/KeywordPanel';
 import PromptPanel from './components/PromptPanel';
 import AssetGallery from './components/AssetGallery';
@@ -16,17 +14,30 @@ export default function Home() {
   const store = useStore();
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ---- Step 1 → 2: 分析书籍 ----
+  // ---- 分析书籍 ----
   const handleAnalyze = useCallback(async () => {
+    // 用 getState() 保证读到最新值（避免 useCallback 闭包陈旧引用问题）
+    const s = useStore.getState();
+
     store.setStatus('analyzing');
-    store.setStep(1);
     store.setError(null);
+    // 清空上次结果
+    useStore.setState({ adMaterials: null, bookDNA: null, images: [], videos: [], generationMode: null });
+
+    console.log('[handleAnalyze] angleCount:', s.angleCount, 'platform:', s.platform);
 
     try {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ novelText: store.novelText, platform: store.platform, llmProvider: store.llmProvider }),
+        body: JSON.stringify({
+          novelText: s.novelText,
+          platform: s.platform,
+          llmProvider: s.llmProvider,
+          copyType: s.copyType,
+          materialType: s.materialType,
+          angleCount: s.angleCount,
+        }),
       });
 
       if (!res.ok) {
@@ -37,34 +48,27 @@ export default function Home() {
       const data = await res.json();
       store.setBookDNA(data.book_dna);
       store.setAdMaterials(data.ad_materials);
-      store.setStep(2);
       store.setStatus('idle');
     } catch (err) {
       store.setError(err instanceof Error ? err.message : 'Unknown error');
+      store.setStatus('idle');
     }
   }, [store]);
 
-  // ---- Step 3: 生成图片（豆包） ----
+  // ---- 生成图片 ----
   const handleGenerateImages = useCallback(async () => {
     const { adMaterials } = store;
     if (!adMaterials?.length) return;
 
+    store.setGenerationMode('image');
     store.setStatus('generating_assets');
-    store.setStep(3);
     store.setError(null);
 
-    // 初始化图片列表 — 每个 ad angle 一张图
     const imgs: ImageAsset[] = adMaterials.map((mat, i) => ({
-      id: `img-${i}`,
-      angleIndex: i,
-      angleName: mat.angle_name,
-      prompt: mat.image_prompt,
-      status: 'pending',
+      id: `img-${i}`, angleIndex: i, angleName: mat.angle_name, prompt: mat.image_prompt, status: 'pending',
     }));
-
     store.setImages(imgs);
 
-    // 串行逐张生成，避免限流
     for (const img of imgs) {
       store.updateImage(img.id, { status: 'generating' });
       try {
@@ -77,95 +81,27 @@ export default function Home() {
         if (data.error) throw new Error(data.error);
         store.updateImage(img.id, { status: 'done', url: data.url });
       } catch (err) {
-        store.updateImage(img.id, {
-          status: 'error',
-          error: err instanceof Error ? err.message : 'Failed',
-        });
+        store.updateImage(img.id, { status: 'error', error: err instanceof Error ? err.message : 'Failed' });
       }
     }
-
-    store.setStep(4);
     store.setStatus('done');
   }, [store]);
 
-  // ---- 一键生成全部（图片 + 视频）并发 ----
-  const handleGenerateAll = useCallback(async () => {
-    const { adMaterials } = store;
-    if (!adMaterials?.length) return;
-
-    store.setGenerationMode(null); // 不高亮任何单个卡片
-    store.setStatus('generating_assets');
-    store.setStep(3);
-    store.setError(null);
-
-    // 初始化图片 & 视频列表
-    const imgs: ImageAsset[] = adMaterials.map((mat, i) => ({
-      id: `img-${i}`, angleIndex: i, angleName: mat.angle_name, prompt: mat.image_prompt, status: 'pending',
-    }));
-    const vids: VideoAsset[] = adMaterials.map((mat, i) => ({
-      id: `vid-${i}`, angleIndex: i, angleName: mat.angle_name, prompt: mat.video_prompt, status: 'pending', provider: 'doubao' as const,
-    }));
-    store.setImages(imgs);
-    store.setVideos(vids);
-
-    // 图片串行
-    const genImages = async () => {
-      for (const img of imgs) {
-        store.updateImage(img.id, { status: 'generating' });
-        try {
-          const res = await fetch('/api/generate/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: img.prompt }) });
-          const data = await res.json();
-          if (data.error) throw new Error(data.error);
-          store.updateImage(img.id, { status: 'done', url: data.url });
-        } catch (err) {
-          store.updateImage(img.id, { status: 'error', error: err instanceof Error ? err.message : 'Failed' });
-        }
-      }
-    };
-
-    // 视频串行提交
-    const genVideos = async () => {
-      const submitted: VideoAsset[] = [];
-      for (const vid of vids) {
-        store.updateVideo(vid.id, { status: 'generating' });
-        try {
-          const res = await fetch('/api/generate/video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: vid.prompt }) });
-          const data = await res.json();
-          if (data.error) throw new Error(data.error);
-          store.updateVideo(vid.id, { status: 'polling', taskId: data.taskId });
-          submitted.push({ ...vid, taskId: data.taskId, status: 'polling' });
-        } catch (err) {
-          store.updateVideo(vid.id, { status: 'error', error: err instanceof Error ? err.message : 'Failed' });
-        }
-      }
-      if (submitted.length > 0) startVideoPolling();
-    };
-
-    // 并发执行，图片完成后如果视频也已提交则读取状态
-    await Promise.all([genImages(), genVideos()]);
-  }, [store]);
-
-  // ---- Step 3: 生成视频（豆包 Seedance） ----
+  // ---- 生成视频（纯文本 to video）----
   const handleGenerateVideos = useCallback(async () => {
     const { adMaterials } = store;
     if (!adMaterials?.length) return;
 
+    store.setGenerationMode('video');
     store.setStatus('generating_assets');
-    store.setStep(3);
     store.setError(null);
 
-    // 初始化视频列表
     const vids: VideoAsset[] = adMaterials.map((mat, i) => ({
-      id: `vid-${i}`,
-      angleIndex: i,
-      angleName: mat.angle_name,
-      prompt: mat.video_prompt,
-      status: 'pending',
-      provider: 'doubao' as const,
+      id: `vid-${i}`, angleIndex: i, angleName: mat.angle_name, prompt: mat.video_prompt,
+      status: 'pending', provider: 'doubao' as const,
     }));
     store.setVideos(vids);
 
-    // 串行提交任务
     const submitted: VideoAsset[] = [];
     for (const vid of vids) {
       store.updateVideo(vid.id, { status: 'generating' });
@@ -180,248 +116,265 @@ export default function Home() {
         store.updateVideo(vid.id, { status: 'polling', taskId: data.taskId });
         submitted.push({ ...vid, taskId: data.taskId, status: 'polling' });
       } catch (err) {
-        store.updateVideo(vid.id, {
-          status: 'error',
-          error: err instanceof Error ? err.message : 'Failed',
+        store.updateVideo(vid.id, { status: 'error', error: err instanceof Error ? err.message : 'Failed' });
+      }
+    }
+    if (submitted.length > 0) startVideoPolling();
+    else store.setStatus('done');
+  }, [store]);
+
+  // ---- 一键生成（先图片，再用图片生成视频）----
+  const handleGenerateAll = useCallback(async () => {
+    const { adMaterials } = store;
+    if (!adMaterials?.length) return;
+
+    store.setGenerationMode(null);
+    store.setStatus('generating_assets');
+    store.setError(null);
+
+    const imgs: ImageAsset[] = adMaterials.map((mat, i) => ({
+      id: `img-${i}`, angleIndex: i, angleName: mat.angle_name, prompt: mat.image_prompt, status: 'pending',
+    }));
+    const vids: VideoAsset[] = adMaterials.map((mat, i) => ({
+      id: `vid-${i}`, angleIndex: i, angleName: mat.angle_name, prompt: mat.video_prompt,
+      status: 'pending', provider: 'doubao' as const,
+    }));
+    store.setImages(imgs);
+    store.setVideos(vids);
+
+    // Step 1: 生成图片
+    const imageUrls: Record<string, string> = {};
+    for (const img of imgs) {
+      store.updateImage(img.id, { status: 'generating' });
+      try {
+        const res = await fetch('/api/generate/image', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: img.prompt }),
         });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        store.updateImage(img.id, { status: 'done', url: data.url });
+        imageUrls[img.id] = data.url;
+      } catch (err) {
+        store.updateImage(img.id, { status: 'error', error: err instanceof Error ? err.message : 'Failed' });
       }
     }
 
-    // 开始轮询
+    // Step 2: 用图片 URL 生成视频
+    const submitted: VideoAsset[] = [];
+    for (const vid of vids) {
+      const imageUrl = imageUrls[`img-${vid.angleIndex}`];
+      store.updateVideo(vid.id, { status: 'generating', sourceImageUrl: imageUrl });
+      try {
+        const res = await fetch('/api/generate/video', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: vid.prompt, imageUrl }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        store.updateVideo(vid.id, { status: 'polling', taskId: data.taskId });
+        submitted.push({ ...vid, taskId: data.taskId, status: 'polling' });
+      } catch (err) {
+        store.updateVideo(vid.id, { status: 'error', error: err instanceof Error ? err.message : 'Failed' });
+      }
+    }
     if (submitted.length > 0) startVideoPolling();
-    else { store.setStep(4); store.setStatus('done'); }
   }, [store]);
 
-  // ---- 视频任务轮询 ----
+  // ---- 单图转视频 ----
+  const handleImageToVideo = useCallback(async (img: ImageAsset) => {
+    if (!img.url) return;
+    const { adMaterials } = store;
+    const videoPrompt = adMaterials?.[img.angleIndex]?.video_prompt ?? '';
+    const vidId = `vid-img-${img.id}`;
+    const newVid = {
+      id: vidId, angleIndex: img.angleIndex, angleName: img.angleName,
+      prompt: videoPrompt, sourceImageUrl: img.url,
+      status: 'generating' as const, provider: 'doubao' as const,
+    };
+    const currentVideos = useStore.getState().videos;
+    const exists = currentVideos.find((v) => v.id === vidId);
+    if (!exists) {
+      store.setVideos([...currentVideos, newVid]);
+    } else {
+      store.updateVideo(vidId, { status: 'generating', error: undefined });
+    }
+    store.setGenerationMode('video');
+    try {
+      const res = await fetch('/api/generate/video', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: videoPrompt, imageUrl: img.url }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      store.updateVideo(vidId, { status: 'polling', taskId: data.taskId });
+      startVideoPolling();
+    } catch (err) {
+      store.updateVideo(vidId, { status: 'error', error: err instanceof Error ? err.message : 'Failed' });
+    }
+  }, [store]);
+
+  // ---- 视频轮询 ----
   const startVideoPolling = useCallback(() => {
     if (pollingRef.current) clearInterval(pollingRef.current);
-
     pollingRef.current = setInterval(async () => {
-      const pendingVideos = useStore.getState().videos.filter(
-        (v) => v.status === 'polling' && v.taskId
-      );
-
+      const pendingVideos = useStore.getState().videos.filter((v) => v.status === 'polling' && v.taskId);
       if (pendingVideos.length === 0) {
         if (pollingRef.current) clearInterval(pollingRef.current);
-        store.setStep(4);
         store.setStatus('done');
         return;
       }
-
       for (const vid of pendingVideos) {
         try {
           const res = await fetch(`/api/generate/video?taskId=${vid.taskId}`);
           const data = await res.json();
-          if (data.error) {
-            store.updateVideo(vid.id, { status: 'error', error: data.error });
-          } else if (data.status === 'succeeded') {
-            store.updateVideo(vid.id, { status: 'done', url: data.url });
-          } else if (data.status === 'failed') {
-            store.updateVideo(vid.id, { status: 'error', error: '生成失败' });
-          }
-          // queued/running → keep polling
-        } catch {
-          // Silently retry
-        }
+          if (data.error) store.updateVideo(vid.id, { status: 'error', error: data.error });
+          else if (data.status === 'succeeded') store.updateVideo(vid.id, { status: 'done', url: data.url });
+          else if (data.status === 'failed') store.updateVideo(vid.id, { status: 'error', error: '生成失败' });
+        } catch { /* retry */ }
       }
     }, 10000);
   }, [store]);
 
-  // ---- 重置 ----
-  const handleReset = useCallback(() => {
+  // ---- 重置结果（保留配置） ----
+  const handleClearResults = useCallback(() => {
     if (pollingRef.current) clearInterval(pollingRef.current);
-    store.reset();
+    useStore.setState({ adMaterials: null, bookDNA: null, images: [], videos: [], generationMode: null, status: 'idle', error: null });
   }, [store]);
 
-  const { step, status, error, generationMode } = store;
+  const { status, error, generationMode } = store;
+  const isAnalyzing = status === 'analyzing';
+  const isGenerating = (useStore.getState().status as string) === 'generating_assets';
+  const hasResults = !!store.adMaterials;
 
   return (
-    <div className="min-h-screen p-4 sm:p-8">
+    <div className="min-h-screen p-4 sm:p-6">
       {/* Header */}
-      <header className="text-center mb-8">
-        <h1 className="text-3xl sm:text-4xl font-bold">
-          📚 Book Promo Studio
-        </h1>
-        <p className="text-[var(--muted)] mt-2">
-          书籍推广素材一站式生成 · Claude + 智谱 + MiniMax
-        </p>
+      <header className="text-center mb-6">
+        <h1 className="text-3xl font-bold">📚 Book Promo Studio</h1>
+        <p className="text-[var(--muted)] mt-1 text-sm">书籍推广素材一站式生成 · Claude + MiniMax</p>
       </header>
-
-      <StepIndicator current={step} />
 
       {/* Error banner */}
       {error && (
-        <div className="max-w-3xl mx-auto mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
-          ❌ {error}
-          <button onClick={handleReset} className="ml-4 underline hover:no-underline">
-            重新开始
-          </button>
+        <div className="max-w-5xl mx-auto mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm flex items-center gap-3">
+          <span>❌ {error}</span>
+          <button onClick={() => store.setError(null)} className="ml-auto underline hover:no-underline shrink-0">关闭</button>
         </div>
       )}
 
-      {/* Loading overlay */}
-      {status === 'analyzing' && (
-        <div className="max-w-3xl mx-auto mb-6 p-6 bg-[var(--card)] border border-[var(--border)] rounded-xl text-center">
-          <div className="animate-pulse-glow text-4xl mb-3">🧠</div>
-          <p className="text-lg font-medium">Claude 正在分析书籍内容...</p>
-          <p className="text-sm text-[var(--muted)] mt-1">提取关键词 → 生成提示词，预计 30-60 秒</p>
+      {/* Main layout: left form + right results */}
+      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-6 items-start">
+
+        {/* ---- 左栏：配置表单（固定宽度，sticky） ---- */}
+        <div className="w-full lg:w-[380px] lg:shrink-0 lg:sticky lg:top-6">
+          <ConfigForm onSubmit={handleAnalyze} />
         </div>
-      )}
 
-      {/* Step content */}
-      {step === 0 && status !== 'analyzing' && (
-        <BookInput onSubmit={handleAnalyze} />
-      )}
+        {/* ---- 右栏：结果区 ---- */}
+        <div className="flex-1 min-w-0">
 
-      {step >= 2 && store.adMaterials && (
-        <div className="mt-8">
-          <KeywordPanel />
+          {/* 未分析时的空状态 */}
+          {!hasResults && !isAnalyzing && (
+            <div className="flex flex-col items-center justify-center h-72 text-center text-[var(--muted)] border-2 border-dashed border-[var(--border)] rounded-2xl">
+              <div className="text-5xl mb-4">🧠</div>
+              <p className="text-base font-medium">填写左侧配置，点击「开始分析生成」</p>
+              <p className="text-sm mt-1">AI 将根据书籍内容生成差异化广告素材</p>
+            </div>
+          )}
 
-          {(step === 2 || (step >= 3 && status !== 'generating_assets')) && (
-            <>
-              <div className="mt-10 max-w-4xl mx-auto">
-                <h3 className="text-center text-lg font-semibold mb-6">🚀 选择要生成的内容</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* 分析中 */}
+          {isAnalyzing && (
+            <div className="flex flex-col items-center justify-center h-72 text-center border border-[var(--border)] rounded-2xl bg-[var(--card)]">
+              <div className="animate-pulse text-5xl mb-4">🧠</div>
+              <p className="text-base font-medium">AI 正在分析书籍内容...</p>
+              <p className="text-sm text-[var(--muted)] mt-1">
+                {store.platform} · {store.copyType} · {store.materialType} · {store.angleCount} 个角度
+              </p>
+              <p className="text-xs text-[var(--muted)] mt-2">预计 30-60 秒</p>
+            </div>
+          )}
 
-                  {/* 图片 */}
+          {/* 有结果后 */}
+          {hasResults && !isAnalyzing && (
+            <div className="space-y-6">
+              {/* 关键词面板 */}
+              <KeywordPanel />
+
+              {/* Tab 切换条 + 操作按钮 */}
+              <div className="flex items-center gap-1 border-b border-[var(--border)] pb-0">
+                {[
+                  { key: 'copy', icon: '✍️', label: '广告文案' },
+                  { key: 'image', icon: '🖼️', label: '推广图片' },
+                  { key: 'video', icon: '🎬', label: '视频广告' },
+                ] .map((tab) => (
                   <button
-                    onClick={() => {
-                      store.setGenerationMode('image');
-                      handleGenerateImages();
-                    }}
-                    disabled={status === 'generating_assets'}
-                    className={`group p-6 rounded-2xl border-2 text-left transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed ${
-                      generationMode === 'image'
-                        ? 'border-indigo-500 bg-indigo-500/10'
-                        : 'border-[var(--border)] bg-[var(--card)] hover:border-indigo-400'
+                    key={tab.key}
+                    onClick={() => store.setGenerationMode(tab.key as 'copy' | 'image' | 'video')}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                      generationMode === tab.key
+                        ? 'border-indigo-500 text-white'
+                        : 'border-transparent text-[var(--muted)] hover:text-white'
                     }`}
                   >
-                    <div className="text-3xl mb-3">🖼️</div>
-                    <div className="font-semibold text-base mb-1">推广图片</div>
-                    <div className="text-xs text-[var(--muted)]">豆包 Seedream 4.5 生成，3 个广告角度</div>
-                    <div className="text-xs text-indigo-400 mt-2">每张约 10-20 秒</div>
+                    {tab.icon} {tab.label}
                   </button>
+                ))}
 
-                  {/* 文案 */}
-                  <button
-                    onClick={() => store.setGenerationMode('copy')}
-                    className={`group p-6 rounded-2xl border-2 text-left transition-all hover:scale-[1.02] ${
-                      generationMode === 'copy'
-                        ? 'border-emerald-500 bg-emerald-500/10'
-                        : 'border-[var(--border)] bg-[var(--card)] hover:border-emerald-400'
-                    }`}
-                  >
-                    <div className="text-3xl mb-3">✍️</div>
-                    <div className="font-semibold text-base mb-1">广告文案</div>
-                    <div className="text-xs text-[var(--muted)]">Hook · 正文 · CTA 、配音脚本</div>
-                    <div className="text-xs text-emerald-400 mt-2">即时查看，无需生成</div>
-                  </button>
+                <div className="flex-1" />
 
-                  {/* 视频 */}
-                  <button
-                    onClick={() => {
-                      store.setGenerationMode('video');
-                      handleGenerateVideos();
-                    }}
-                    disabled={status === 'generating_assets'}
-                    className={`group p-6 rounded-2xl border-2 text-left transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed ${
-                      generationMode === 'video'
-                        ? 'border-purple-500 bg-purple-500/10'
-                        : 'border-[var(--border)] bg-[var(--card)] hover:border-purple-400'
-                    }`}
-                  >
-                    <div className="text-3xl mb-3">🎬</div>
-                    <div className="font-semibold text-base mb-1">视频广告</div>
-                    <div className="text-xs text-[var(--muted)]">豆包 Seedance 1.5 Pro 生成，3 个广告角度</div>
-                    <div className="text-xs text-purple-400 mt-2">每条约 2-5 分钟</div>
-                  </button>
-
-                </div>
+                {/* 操作按钮 */}
+                {!isGenerating && (
+                  <div className="flex items-center gap-2 pb-1">
+                    <button
+                      onClick={handleGenerateAll}
+                      className="px-4 py-1.5 bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-90 rounded-lg text-xs font-semibold text-white transition-opacity shadow-sm"
+                    >
+                      ⚡ 一键生成
+                    </button>
+                    <button
+                      onClick={handleClearResults}
+                      className="px-3 py-1.5 border border-[var(--border)] rounded-lg text-xs text-[var(--muted)] hover:text-white transition-colors"
+                    >
+                      🔄 清空
+                    </button>
+                  </div>
+                )}
+                {isGenerating && (
+                  <div className="flex items-center gap-2 pb-1 text-xs text-[var(--muted)]">
+                    <div className="animate-pulse">⚡</div>
+                    <span>
+                      {generationMode === 'image' ? '生成图片中...'
+                        : generationMode === 'video' ? '生成视频中...'
+                        : '图片 → 视频 生成中...'}
+                    </span>
+                  </div>
+                )}
               </div>
 
-              {/* 一键生成全部 */}
-              <div className="mt-6 text-center">
-                <div className="flex items-center gap-3 justify-center mb-4">
-                  <div className="flex-1 h-px bg-[var(--border)]" />
-                  <span className="text-xs text-[var(--muted)] px-2">或者</span>
-                  <div className="flex-1 h-px bg-[var(--border)]" />
-                </div>
-                <button
-                  onClick={handleGenerateAll}
-                  disabled={status === 'generating_assets'}
-                  className="px-8 py-3 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-semibold text-white transition-opacity shadow-lg shadow-purple-500/20"
-                >
-                  ⚡ 一键生成全部（图片 + 视频）
-                </button>
-                <p className="text-xs text-[var(--muted)] mt-2">图片 + 视频并发开始，完成后可一键导出</p>
+              {/* Tab 内容面板 */}
+              <div className="pt-2">
+                {generationMode === 'copy' && <PromptPanel />}
+                {generationMode === 'image' && <AssetGallery onImageToVideo={handleImageToVideo} />}
+                {generationMode === 'video' && <VideoGallery />}
+                {(generationMode === null || generationMode === undefined) && (
+                  <div className="text-center text-[var(--muted)] text-sm py-12">
+                    点击上方 Tab 查看对应内容，或点击「⚡ 一键生成」生成图片和视频
+                  </div>
+                )}
               </div>
-            </>
-          )}
 
-          {/* 根据选择显示不同内容 */}
-          {generationMode === 'copy' && (
-            <div className="mt-8">
-              <PromptPanel />
-            </div>
-          )}
-          {generationMode === 'video' && step >= 3 && (
-            <div className="mt-8">
-              {status === 'generating_assets' && (
-                <div className="text-center mb-6 p-4 bg-[var(--card)] border border-[var(--border)] rounded-xl max-w-xl mx-auto">
-                  <div className="animate-pulse text-3xl mb-2">🎬</div>
-                  <p className="text-sm text-[var(--muted)]">豆包正在生成视频，每条约 2-5 分钟，请耐心等候...</p>
+              {/* 导出 */}
+              {status === 'done' && (
+                <div className="flex items-center justify-center gap-3 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+                  <span className="text-emerald-400 text-sm font-medium">🎉 生成完成！</span>
+                  <ExportButton />
                 </div>
               )}
-              <VideoGallery />
-            </div>
-          )}
-          {generationMode === 'image' && step >= 3 && (
-            <div className="mt-8">
-              {status === 'generating_assets' && (
-                <div className="text-center mb-6 p-4 bg-[var(--card)] border border-[var(--border)] rounded-xl max-w-xl mx-auto">
-                  <div className="animate-pulse text-3xl mb-2">🖼️</div>
-                  <p className="text-sm text-[var(--muted)]">豆包正在生成图片，请稍候...</p>
-                </div>
-              )}
-              <AssetGallery />
-            </div>
-          )}
-          {/* 一键生成全部模式：同时显示图片和视频 */}
-          {generationMode === null && step >= 3 && (
-            <div className="mt-8 space-y-10">
-              {status === 'generating_assets' && (
-                <div className="text-center p-4 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-xl max-w-xl mx-auto">
-                  <div className="animate-pulse text-3xl mb-2">⚡</div>
-                  <p className="text-sm text-[var(--muted)]">图片和视频并发生成中，请稍候...</p>
-                </div>
-              )}
-              <AssetGallery />
-              <VideoGallery />
             </div>
           )}
         </div>
-      )}
-
-
-      {/* Done */}
-      {status === 'done' && (
-        <div className="text-center mt-8 p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-xl max-w-3xl mx-auto">
-          <div className="text-4xl mb-3">🎉</div>
-          <p className="text-lg font-medium text-emerald-400">
-            {generationMode === 'video' ? '视频生成完成！' : generationMode === null ? '图片 + 视频全部完成！' : '图片生成完成！'}
-          </p>
-          <p className="text-sm text-[var(--muted)] mt-1">点击下方按鈕打包所有素材，按广告角度分层归档</p>
-          <div className="mt-5 flex items-center justify-center gap-4 flex-wrap">
-            <ExportButton />
-            <button
-              onClick={handleReset}
-              className="px-6 py-3 bg-[var(--card)] border border-[var(--border)] rounded-xl hover:bg-[var(--border)] transition-colors"
-            >
-              📖 分析另一本书
-            </button>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -48,7 +48,7 @@ export default function VideoGallery() {
                     <div className="text-center">
                       <div className="animate-pulse text-4xl mb-3">🎬</div>
                       <span className="text-xs text-[var(--muted)]">
-                        {vid.status === 'polling' ? '生成中（约 2-5 分钟）...' : '提交中...'}
+                        {vid.status === 'polling' ? '生成中（约 10-15 秒）...' : '提交中...'}
                       </span>
                     </div>
                   )}

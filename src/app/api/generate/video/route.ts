@@ -8,15 +8,22 @@ function getDoubaoKey() {
   return apiKey;
 }
 
-// 提交视频生成任务
+// 提交视频生成任务（支持纯文本 & 图片+文本两种模式）
 export async function POST(req: NextRequest) {
   try {
-    const { prompt } = await req.json();
+    const { prompt, imageUrl } = await req.json();
     if (!prompt) {
       return NextResponse.json({ error: '请提供视频提示词' }, { status: 400 });
     }
 
     const apiKey = getDoubaoKey();
+
+    // 构建 content 数组：如果有 imageUrl，图片放首位作为参考帧
+    const content: { type: string; text?: string; image_url?: { url: string } }[] = [];
+    if (imageUrl) {
+      content.push({ type: 'image_url', image_url: { url: imageUrl } });
+    }
+    content.push({ type: 'text', text: prompt });
 
     const res = await fetch('https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks', {
       method: 'POST',
@@ -26,12 +33,14 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'doubao-seedance-1-5-pro-251215',
-        content: [{ type: 'text', text: prompt }],
+        content,
+        duration: 10,
       }),
     });
 
     const data = await res.json();
-    console.log('[doubao video submit] status:', res.status, JSON.stringify(data).slice(0, 300));
+    const mode = imageUrl ? 'image-to-video' : 'text-to-video';
+    console.log(`[doubao video submit] mode: ${mode}, status:`, res.status, JSON.stringify(data).slice(0, 300));
 
     if (!res.ok || data.error) {
       throw new Error(data.error?.message || `Doubao API error ${res.status}`);
@@ -40,13 +49,14 @@ export async function POST(req: NextRequest) {
     const taskId = data.id;
     if (!taskId) throw new Error('No task ID in response');
 
-    return NextResponse.json({ taskId, provider: 'doubao' });
+    return NextResponse.json({ taskId, provider: 'doubao', mode });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('Video generate error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
 
 // 查询视频任务状态
 export async function GET(req: NextRequest) {

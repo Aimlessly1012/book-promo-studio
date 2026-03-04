@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { BookDNA, AdMaterial, Platform, LLMProvider } from './claude';
+import type { BookDNA, AdMaterial, Platform, LLMProvider, CopyType, MaterialType } from './claude';
 
 export type TaskStatus = 'idle' | 'analyzing' | 'generating_assets' | 'done' | 'error';
 export type GenerationMode = 'image' | 'copy' | 'video' | null;
@@ -22,6 +22,7 @@ export interface VideoAsset {
   prompt: string;
   taskId?: string;
   url?: string;
+  sourceImageUrl?: string; // 图生视频时的源图片
   status: 'pending' | 'generating' | 'polling' | 'done' | 'error';
   error?: string;
   provider: 'zhipu' | 'minimax' | 'doubao';
@@ -45,10 +46,13 @@ interface AppState {
   step: number;
   error: string | null;
 
-  // 输入
+  // 输入 & 配置
   novelText: string;
   platform: Platform;
   llmProvider: LLMProvider;
+  copyType: CopyType;
+  materialType: MaterialType;
+  angleCount: number;
   generationMode: GenerationMode;
 
   // 分析结果
@@ -64,6 +68,9 @@ interface AppState {
   setNovelText: (text: string) => void;
   setPlatform: (p: Platform) => void;
   setLLMProvider: (p: LLMProvider) => void;
+  setCopyType: (c: CopyType) => void;
+  setMaterialType: (m: MaterialType) => void;
+  setAngleCount: (n: number) => void;
   setGenerationMode: (m: GenerationMode) => void;
   setStatus: (status: TaskStatus) => void;
   setStep: (step: number) => void;
@@ -84,8 +91,11 @@ const initialState = {
   step: 0,
   error: null,
   novelText: '',
-  platform: 'TikTok' as Platform,
+  platform: 'tiktok' as Platform,
   llmProvider: 'minimax' as LLMProvider,
+  copyType: '长-pov剧情' as CopyType,
+  materialType: '轮播视频' as MaterialType,
+  angleCount: 3,
   generationMode: null as GenerationMode,
   bookDNA: null,
   adMaterials: null,
@@ -100,6 +110,9 @@ export const useStore = create<AppState>((set) => ({
   setNovelText: (text) => set({ novelText: text }),
   setPlatform: (platform) => set({ platform }),
   setLLMProvider: (llmProvider) => set({ llmProvider }),
+  setCopyType: (copyType) => set({ copyType }),
+  setMaterialType: (materialType) => set({ materialType }),
+  setAngleCount: (angleCount) => set({ angleCount }),
   setGenerationMode: (generationMode) => set({ generationMode }),
   setStatus: (status) => set({ status }),
   setStep: (step) => set({ step }),

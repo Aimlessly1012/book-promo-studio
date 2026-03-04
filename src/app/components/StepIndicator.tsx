@@ -1,16 +1,16 @@
 'use client';
 
 const steps = [
-  { label: '输入内容', icon: '📖' },
-  { label: '分析提取', icon: '🔍' },
-  { label: '提示词生成', icon: '✍️' },
-  { label: '素材生成', icon: '🎨' },
-  { label: '完成', icon: '✅' },
+  { label: '渠道', icon: '📡' },
+  { label: '书籍', icon: '📖' },
+  { label: '文案类型', icon: '✍️' },
+  { label: '素材类型', icon: '🎨' },
+  { label: '生成结果', icon: '🚀' },
 ];
 
 export default function StepIndicator({ current }: { current: number }) {
   return (
-    <div className="flex items-center justify-center gap-2 mb-8">
+    <div className="flex items-center justify-center gap-1 mb-8 flex-wrap">
       {steps.map((s, i) => (
         <div key={i} className="flex items-center">
           <div
@@ -27,7 +27,7 @@ export default function StepIndicator({ current }: { current: number }) {
           </div>
           {i < steps.length - 1 && (
             <div
-              className={`w-8 h-0.5 mx-1 ${
+              className={`w-6 h-0.5 mx-0.5 ${
                 i < current ? 'bg-indigo-500/50' : 'bg-[var(--border)]'
               }`}
             />

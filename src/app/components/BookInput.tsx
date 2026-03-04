@@ -9,7 +9,7 @@ const PROVIDERS: { value: LLMProvider; label: string; badge: string }[] = [
   { value: 'claude', label: 'Claude', badge: 'claude-sonnet-4-5' },
 ];
 
-export default function BookInput({ onSubmit }: { onSubmit: () => void }) {
+export default function BookInput({ onSubmit, onBack }: { onSubmit: () => void; onBack: () => void }) {
   const { novelText: bookContent, setNovelText: setBookContent, llmProvider, setLLMProvider } = useStore();
   const [dragActive, setDragActive] = useState(false);
 
@@ -53,7 +53,19 @@ export default function BookInput({ onSubmit }: { onSubmit: () => void }) {
         onChange={(e) => setBookContent(e.target.value)}
       />
 
-      {/* 模型选择 + 提交 */}
+      {/* 导入接口入口（占位，后期接入接口） */}
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          disabled
+          title="后期接入书籍接口，自动导入书籍内容"
+          className="flex items-center gap-1.5 px-4 py-2 border border-dashed border-[var(--border)] rounded-lg text-xs text-[var(--muted)] cursor-not-allowed opacity-50"
+        >
+          🔗 从接口导入书籍（即将上线）
+        </button>
+        <span className="text-[10px] text-[var(--muted)]">调用书籍接口自动填充内容</span>
+      </div>
+
+      {/* 字数 + 模型选择 + 操作按钮 */}
       <div className="flex items-center justify-between mt-4">
         <span className="text-sm text-[var(--muted)]">
           {bookContent?.length > 0 ? `${bookContent?.length} 字` : '等待输入...'}
@@ -78,12 +90,15 @@ export default function BookInput({ onSubmit }: { onSubmit: () => void }) {
             ))}
           </div>
 
+          <button onClick={onBack} className="px-4 py-2.5 border border-[var(--border)] rounded-lg text-sm hover:bg-[var(--card)] transition-colors">
+            ← 返回
+          </button>
           <button
             onClick={onSubmit}
             disabled={bookContent?.length < 50}
             className="px-6 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
           >
-            开始分析 →
+            下一步 →
           </button>
         </div>
       </div>
