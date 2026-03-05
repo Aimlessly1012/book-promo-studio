@@ -294,7 +294,11 @@ export default function Home() {
             // 视频生成完成 → 自动烧录字幕
             store.updateVideo(vid.id, { status: 'burning', url: data.url });
             const adMats = useStore.getState().adMaterials;
+            const musics = useStore.getState().musics;
             const mat = adMats?.[vid.angleIndex];
+            // 找到对应角度的音乐
+            const music = musics.find(m => m.angleIndex === vid.angleIndex && m.status === 'done');
+            
             if (mat) {
               try {
                 const burnRes = await fetch('/api/generate/burn-subtitle', {
@@ -307,6 +311,7 @@ export default function Home() {
                     cta: mat.copywriting.cta,
                     angleName: mat.angle_name,
                     subtitleStyle: mat.subtitle_style,
+                    audioUrl: music?.audioUrl, // 添加音频URL
                   }),
                 });
                 const burnData = await burnRes.json();
