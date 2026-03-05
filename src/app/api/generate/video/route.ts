@@ -23,7 +23,9 @@ export async function POST(req: NextRequest) {
     if (imageUrl) {
       content.push({ type: 'image_url', image_url: { url: imageUrl } });
     }
-    content.push({ type: 'text', text: prompt });
+    // 在提示词中明确要求无音效、无背景音乐
+    const enhancedPrompt = `${prompt}。要求：无音效、无背景音乐、静音视频。`;
+    content.push({ type: 'text', text: enhancedPrompt });
 
     const res = await fetch('https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks', {
       method: 'POST',
