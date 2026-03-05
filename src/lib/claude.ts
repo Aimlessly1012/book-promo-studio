@@ -391,15 +391,13 @@ export async function generateAdMaterials(
       // 修复 LLM 常见的非法转义字符和格式问题
       let repaired = jsonMatch[0]
         .replace(/\\(?!["\\\/bfnrtu])/g, '\\\\')  // 修复非法转义
-        .replace(/,(\s*[}\]])/g, '$1')  // 移除尾随逗号
-        .replace(/\n/g, '\\n')  // 转义换行符
-        .replace(/\r/g, '\\r')  // 转义回车符
-        .replace(/\t/g, '\\t'); // 转义制表符
+        .replace(/,(\s*[}\]])/g, '$1');  // 移除尾随逗号
       
       return JSON.parse(repaired) as SkillOutput;
     } catch (e) {
       console.error('[generateAdMaterials] JSON.parse failed:', e);
       console.error('[generateAdMaterials] matched string preview:', jsonMatch[0].slice(0, 500));
+      console.error('[generateAdMaterials] first 50 chars (hex):', Buffer.from(jsonMatch[0].slice(0, 50)).toString('hex'));
       throw new Error(`JSON parse error: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
