@@ -388,8 +388,14 @@ export async function generateAdMaterials(
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     try {
-      // 修复 LLM 常见的非法转义字符（如 \' \- \. \! 等）
-      const repaired = jsonMatch[0].replace(/\\(?!["\\\/bfnrtu])/g, '\\\\');
+      // 修复 LLM 常见的非法转义字符和格式问题
+      let repaired = jsonMatch[0]
+        .replace(/\\(?!["\\\/bfnrtu])/g, '\\\\')  // 修复非法转义
+        .replace(/,(\s*[}\]])/g, '$1')  // 移除尾随逗号
+        .replace(/\n/g, '\\n')  // 转义换行符
+        .replace(/\r/g, '\\r')  // 转义回车符
+        .replace(/\t/g, '\\t'); // 转义制表符
+      
       return JSON.parse(repaired) as SkillOutput;
     } catch (e) {
       console.error('[generateAdMaterials] JSON.parse failed:', e);
