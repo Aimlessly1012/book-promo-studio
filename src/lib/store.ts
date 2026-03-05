@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { BookDNA, AdMaterial, Platform, LLMProvider, CopyType, MaterialType } from './claude';
 
 export type TaskStatus = 'idle' | 'analyzing' | 'generating_assets' | 'done' | 'error';
-export type GenerationMode = 'image' | 'copy' | 'video' | null;
+export type GenerationMode = 'image' | 'copy' | 'video' | 'music' | null;
 
 // ---- 生成资产 ----
 export interface ImageAsset {

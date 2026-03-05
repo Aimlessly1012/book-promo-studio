@@ -2,12 +2,13 @@
 
 import { useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store';
-import type { ImageAsset, VideoAsset } from '@/lib/store';
+import type { ImageAsset, VideoAsset, MusicAsset } from '@/lib/store';
 import ConfigForm from './components/ConfigForm';
 import KeywordPanel from './components/KeywordPanel';
 import PromptPanel from './components/PromptPanel';
 import AssetGallery from './components/AssetGallery';
 import VideoGallery from './components/VideoGallery';
+import MusicGallery from './components/MusicGallery';
 import ExportButton from './components/ExportButton';
 
 export default function Home() {
@@ -121,6 +122,55 @@ export default function Home() {
     }
     if (submitted.length > 0) startVideoPolling();
     else store.setStatus('done');
+  }, [store]);
+
+  // ---- 生成背景音乐 ----
+  const handleGenerateMusic = useCallback(async () => {
+    const { adMaterials } = store;
+    if (!adMaterials?.length) return;
+
+    store.setGenerationMode('music');
+    store.setStatus('generating_assets');
+    store.setError(null);
+
+    const musics: MusicAsset[] = adMaterials.map((mat, i) => ({
+      id: `music-${i}`,
+      angleIndex: i,
+      angleName: mat.angle_name,
+      prompt: `适合${mat.angle_name}的背景音乐，轻快、温暖、鼓舞人心`,
+      lyrics: '[instrumental]',
+      status: 'pending',
+    }));
+    store.setMusics(musics);
+
+    for (const music of musics) {
+      store.updateMusic(music.id, { status: 'generating' });
+      try {
+        const res = await fetch('/api/generate/audio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: music.prompt, lyrics: music.lyrics }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        
+        // 将 base64 转为 blob URL
+        const blob = await fetch(`data:audio/mpeg;base64,${data.audioBase64}`).then(r => r.blob());
+        const audioUrl = URL.createObjectURL(blob);
+        
+        store.updateMusic(music.id, {
+          status: 'done',
+          audioUrl,
+          audioDuration: data.duration,
+        });
+      } catch (err) {
+        store.updateMusic(music.id, {
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Failed',
+        });
+      }
+    }
+    store.setStatus('done');
   }, [store]);
 
   // ---- 一键生成（先图片，再用图片生成视频）----
@@ -277,7 +327,7 @@ export default function Home() {
   // ---- 重置结果（保留配置） ----
   const handleClearResults = useCallback(() => {
     if (pollingRef.current) clearInterval(pollingRef.current);
-    useStore.setState({ adMaterials: null, bookDNA: null, images: [], videos: [], generationMode: null, status: 'idle', error: null });
+    useStore.setState({ adMaterials: null, bookDNA: null, images: [], videos: [], musics: [], generationMode: null, status: 'idle', error: null });
   }, [store]);
 
   const { status, error, generationMode } = store;
@@ -345,10 +395,11 @@ export default function Home() {
                   { key: 'copy', icon: '✍️', label: '广告文案' },
                   { key: 'image', icon: '🖼️', label: '推广图片' },
                   { key: 'video', icon: '🎬', label: '视频广告' },
+                  { key: 'music', icon: '🎵', label: '背景音乐' },
                 ] .map((tab) => (
                   <button
                     key={tab.key}
-                    onClick={() => store.setGenerationMode(tab.key as 'copy' | 'image' | 'video')}
+                    onClick={() => store.setGenerationMode(tab.key as 'copy' | 'image' | 'video' | 'music')}
                     className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
                       generationMode === tab.key
                         ? 'border-indigo-500 text-white'
@@ -364,12 +415,22 @@ export default function Home() {
                 {/* 操作按钮 */}
                 {!isGenerating && (
                   <div className="flex items-center gap-2 pb-1">
-                    <button
-                      onClick={handleGenerateAll}
-                      className="px-4 py-1.5 bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-90 rounded-lg text-xs font-semibold text-white transition-opacity shadow-sm"
-                    >
-                      ⚡ 一键生成
-                    </button>
+                    {generationMode === 'music' && (
+                      <button
+                        onClick={handleGenerateMusic}
+                        className="px-4 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:opacity-90 rounded-lg text-xs font-semibold text-white transition-opacity shadow-sm"
+                      >
+                        🎵 生成背景音乐
+                      </button>
+                    )}
+                    {generationMode !== 'music' && (
+                      <button
+                        onClick={handleGenerateAll}
+                        className="px-4 py-1.5 bg-gradient-to-r from-indigo-500 to-purple-500 hover:opacity-90 rounded-lg text-xs font-semibold text-white transition-opacity shadow-sm"
+                      >
+                        ⚡ 一键生成
+                      </button>
+                    )}
                     <button
                       onClick={handleClearResults}
                       className="px-3 py-1.5 border border-[var(--border)] rounded-lg text-xs text-[var(--muted)] hover:text-white transition-colors"
@@ -384,6 +445,7 @@ export default function Home() {
                     <span>
                       {generationMode === 'image' ? '生成图片中...'
                         : generationMode === 'video' ? '生成视频中...'
+                        : generationMode === 'music' ? '生成音乐中...'
                         : '图片 → 视频 生成中...'}
                     </span>
                   </div>
@@ -395,6 +457,7 @@ export default function Home() {
                 {generationMode === 'copy' && <PromptPanel />}
                 {generationMode === 'image' && <AssetGallery onImageToVideo={handleImageToVideo} />}
                 {generationMode === 'video' && <VideoGallery />}
+                {generationMode === 'music' && <MusicGallery />}
                 {(generationMode === null || generationMode === undefined) && (
                   <div className="text-center text-[var(--muted)] text-sm py-12">
                     点击上方 Tab 查看对应内容，或点击「⚡ 一键生成」生成图片和视频
