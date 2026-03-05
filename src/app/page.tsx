@@ -151,8 +151,17 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: music.prompt, lyrics: music.lyrics }),
         });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
         const data = await res.json();
         if (data.error) throw new Error(data.error);
+        
+        if (!data.audioBase64) {
+          throw new Error('No audio data received');
+        }
         
         // 将 base64 转为 blob URL
         const blob = await fetch(`data:audio/mpeg;base64,${data.audioBase64}`).then(r => r.blob());
@@ -164,6 +173,7 @@ export default function Home() {
           audioDuration: data.duration,
         });
       } catch (err) {
+        console.error('[handleGenerateMusic] error:', err);
         store.updateMusic(music.id, {
           status: 'error',
           error: err instanceof Error ? err.message : 'Failed',
