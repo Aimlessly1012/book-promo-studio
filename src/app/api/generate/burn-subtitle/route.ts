@@ -199,7 +199,7 @@ async function downloadFile(url: string, dest: string): Promise<void> {
 export async function POST(req: NextRequest) {
   const tmpDir = path.join(os.tmpdir(), `burn-${Date.now()}`);
   try {
-    const { videoUrl, hook, body, cta, angleName, subtitleStyle } = await req.json();
+    const { videoUrl, hook, body, cta, angleName, subtitleStyle, audioUrl } = await req.json();
     if (!videoUrl) {
       return NextResponse.json({ error: 'Missing videoUrl' }, { status: 400 });
     }
@@ -238,10 +238,17 @@ export async function POST(req: NextRequest) {
     fs.mkdirSync(tmpDir, { recursive: true });
     const videoPath = path.join(tmpDir, 'input.mp4');
     const srtPath = path.join(tmpDir, 'sub.srt');
+    const audioPath = path.join(tmpDir, 'audio.mp3');
     const outputPath = path.join(tmpDir, 'output.mp4');
 
     console.log('[burn-subtitle] Downloading video...');
     await downloadFile(videoUrl, videoPath);
+
+    // 如果有音频 URL，下载音频
+    if (audioUrl) {
+      console.log('[burn-subtitle] Downloading audio...');
+      await downloadFile(audioUrl, audioPath);
+    }
 
     const duration = await getVideoDuration(videoPath);
     console.log('[burn-subtitle] Video duration:', duration);
@@ -262,13 +269,41 @@ export async function POST(req: NextRequest) {
     console.log('[burn-subtitle] FFmpeg style:', ffStyle);
 
     await new Promise<void>((resolve, reject) => {
-      const ff = spawn('ffmpeg', [
+      // 构建 FFmpeg 命令
+      const ffmpegArgs = [
         '-i', videoPath,
-        '-vf', `subtitles=${srtPath}:force_style='${ffStyle}'`,
+      ];
+
+      // 如果有音频，添加音频输入
+      if (audioUrl && fs.existsSync(audioPath)) {
+        ffmpegArgs.push('-i', audioPath);
+      }
+
+      // 添加字幕滤镜
+      ffmpegArgs.push('-vf', `subtitles=${srtPath}:force_style='${ffStyle}'`);
+
+      // 如果有音频，混合音频（视频原音 + 背景音乐）
+      if (audioUrl && fs.existsSync(audioPath)) {
+        // 混合两个音频轨道，背景音乐音量降低到 30%
+        ffmpegArgs.push(
+          '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=shortest:weights=1 0.3[aout]',
+          '-map', '0:v',
+          '-map', '[aout]'
+        );
+      } else {
+        // 没有音频，只复制原视频音频
+        ffmpegArgs.push('-c:a', 'copy');
+      }
+
+      // 输出设置
+      ffmpegArgs.push(
         '-c:v', 'mpeg4', '-q:v', '4',
-        '-c:a', 'copy',
-        '-y', outputPath,
-      ]);
+        '-y', outputPath
+      );
+
+      console.log('[burn-subtitle] FFmpeg command:', ffmpegArgs.join(' '));
+
+      const ff = spawn('ffmpeg', ffmpegArgs);
       ff.stderr.on('data', (d) => console.log('[ffmpeg]', d.toString().slice(0, 200)));
       ff.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`FFmpeg exit ${code}`))));
     });
